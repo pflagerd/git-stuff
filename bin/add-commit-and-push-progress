@@ -1,0 +1,7 @@
+git add .
+if [ $# == 0 ]; then
+    git commit -a -m"progress"
+else
+    git commit -a -m"$1"
+fi
+git push-all-remotes

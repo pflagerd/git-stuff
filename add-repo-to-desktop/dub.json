@@ -1,0 +1,10 @@
+{
+	"authors": [
+		"Daniel P Pflager"
+	],
+	"copyright": "Copyright © 2024, Daniel P Pflager",
+	"description": "Alternative to git submodules. This utility adds a repo to .gitignore and .gitrepos",
+	"license": "proprietary",
+	"name": "git-add-repo-to-desktop",
+    "postGenerateCommands": [ "cp -f git-add-repo-to-desktop $HOME/bin" ]
+}
