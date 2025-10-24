@@ -4,4 +4,4 @@ if [ $# == 0 ]; then
 else
     git commit -a -m"$1"
 fi
-git commit-and-push
+commit-and-push
