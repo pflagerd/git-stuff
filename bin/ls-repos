@@ -1,0 +1,12 @@
+#!/bin/bash
+IFS=$'\n'
+for workingDirectory in $(find -L . -name .git -print); do
+  # echo "workingDirectory == \\"${workingDirectory}\\""
+  if [ $workingDirectory == "./.git" ]; then
+    continue
+  fi
+  echo -n $(dirname $workingDirectory)" "
+  pushd $(dirname $workingDirectory) > /dev/null
+    git remote get-url origin
+  popd >/dev/null
+done | sort
