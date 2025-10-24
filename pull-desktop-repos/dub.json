@@ -6,5 +6,5 @@
 	"description": "git extension which clones/pulls all repos listed in the .gitrepos file in the current directory",
 	"license": "proprietary",
 	"name": "git-pull-desktop-repos",
-	"postGenerateCommands": [ "cp -f git-pull-desktop-repos $HOME/bin" ]
+	"postGenerateCommands": [ "cp -f git-pull-desktop-repos ../bin" ]
 }
