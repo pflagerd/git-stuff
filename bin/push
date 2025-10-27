@@ -1,18 +1,8 @@
 #!/bin/bash
-declare -i i=1
-remotes=""
-for word in `git remote -v`; do
-  if [ $i == 1 ]; then
-    remotes+=$word" "
-  fi
-  if [ $i == 3 ]; then
-    i=1
-  else
-    i=i+1
-  fi
-done
-
-for remote in `echo "$remotes" | xargs -n1 | sort -u`; do
-  echo "pushing $remote "`git remote get-url $remote`
-  git push $remote
+IFS=$'\n'; for remote in $(git remote -v | sort -k 3 | egrep '\(push\)$' | sort -k 2 -u); do
+    for r in $(echo $remote | awk '{ print $1 }'); do
+	echo "pushing $r"
+        git push $r
+	echo
+    done
 done
