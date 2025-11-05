@@ -8,29 +8,7 @@ static const auto gitrepos = ".gitrepos";
 
 static bool debugging = false;
 
-int main()
-{
-
-	try {
-		// git pull the current directory
-
-
-        // Iterate through all directory entries recursively
-        foreach (DirEntry entry; dirEntries("./", SpanMode.shallow, false)) {
-            // Check if the entry is a regular file whose baseName matches gitrepos contents
-			if (entry.isFile && baseName(entry.name) == gitrepos) {
-				writeln("Found ", entry.name);
-			}
-        }
-    } catch (FileException e) {
-        writeln("Error: ", e.msg);
-    }
-
-
-	return 0;
-}
-
-int pull() {
+int main() {
 	if (!gitrepos.exists()) {
 		stderr.writeln(gitrepos ~ " does not exist in the current working directory. Is your current working directory set to a desktop directory?");
 		return 1;
