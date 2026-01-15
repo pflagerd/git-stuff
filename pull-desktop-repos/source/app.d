@@ -19,8 +19,10 @@ int main() {
     foreach (line; file.byLine()) {
 		auto splitLine = line.split();
 		auto directory = splitLine[0];
+		writeln("directory == \"" ~ directory ~ "\"");
 		if (debugging) stderr.writeln("directory == \"" ~ directory ~ "\"");
 		auto gitUrl = splitLine[1];
+		writeln("gitUrl == \"" ~ gitUrl ~ "\"");
 		if (directory.exists() && directory.isDir()) {
 			auto cmd1 = "pushd " ~ directory ~ " >/dev/null; git pull; popd >/dev/null";
 			cmd1.writeln();
@@ -30,6 +32,7 @@ int main() {
 		}
 
 		if (!directory.exists()) {
+			writeln("directory.dirName == \"" ~ directory.dirName ~ "\"");
 			if (!directory.dirName().exists()) {
 				auto cmd2 = "mkdir -p " ~ directory.dirName();
 				cmd2.writeln();
