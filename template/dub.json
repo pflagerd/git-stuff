@@ -1,0 +1,10 @@
+{
+	"authors": [
+		"Daniel P Pflager"
+	],
+	"copyright": "Copyright © 2026, Daniel P Pflager",
+	"description": "template",
+	"license": "proprietary",
+	"name": "template",
+    "postGenerateCommands": [ "cp -f template ../bin" ]
+}
