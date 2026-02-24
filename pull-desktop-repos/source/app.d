@@ -35,7 +35,28 @@ int main(string[] args) {
 			if (debugging) stderr.writeln("branch == \"" ~ branch ~ "\"");
 		}
 
-		if (directory.exists()) {
+		if (!directory.exists()) {
+			if (debugging) stderr.writeln("directory.dirName == \"" ~ directory.dirName ~ "\"");
+			if (directory.dirName() != "." && !directory.dirName().exists()) {
+				auto cmd2 = "mkdir -p " ~ directory.dirName();
+				if (debugging) stderr.writeln(cmd2);
+				auto result = executeShell(cmd2);
+				if (debugging) stderr.writeln("result.status == ",result.status);
+				if (result.status)
+					continue;
+				result.output.write();
+			}
+
+			auto cmd3 = "git clone " ~ gitUrl ~ " " ~ directory ~ " >/dev/null";
+			if (!branch.empty)
+				cmd3 = "git clone -b " ~ branch ~ " " ~ gitUrl ~ " " ~ directory ~ " >/dev/null";
+			if (debugging) stderr.writeln(cmd3);
+			auto result = executeShell(cmd3);
+			if (debugging) stderr.writeln("result.status == ",result.status);
+			if (result.status)
+				continue;
+			result.output.writeln();
+		} else {
 			if (!directory.isDir()) {
 				stderr.writeln("directory == \"" ~ directory ~ "\" exists but is NOT a directory.");
 				continue;
@@ -46,9 +67,8 @@ int main(string[] args) {
 			if (debugging) writeln("executing: " ~ cmd1);
 			auto result = executeShell(cmd1);
 			if (debugging) stderr.writeln("result.status == ",result.status);
-			if (result.status) {
+			if (result.status)
 				continue;
-			}
 			if (debugging) writeln("result.output == \"" ~ result.output ~ "\"");
 			auto isDefaultBranch = result.output.split[0] == "*";
 			if (debugging) writeln("isDefaultBranch == ",isDefaultBranch);
@@ -76,19 +96,6 @@ int main(string[] args) {
 			// if (debugging) writeln("result.status == ", result.status);
 			break;
 			continue;
-		} else {
-			writeln("directory.dirName == \"" ~ directory.dirName ~ "\"");
-			if (!directory.dirName().exists()) {
-				auto cmd2 = "mkdir -p " ~ directory.dirName();
-				cmd2.writeln();
-				auto result = executeShell(cmd2);
-				result.output.write();
-			}
-
-			auto cmd3 = "pushd " ~ directory.dirName() ~ " > /dev/null; git clone " ~ gitUrl ~ "; popd > /dev/null";
-			writeln(cmd3);
-			auto result = executeShell(cmd3);
-			result.output.writeln();
 		}
 		break;
 	}
