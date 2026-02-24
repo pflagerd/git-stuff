@@ -76,7 +76,7 @@ int main(string[] args) {
 			if (!branch.empty) {
 				if (debugging) stderr.writeln("actualBranch == \"",actualBranch,"\"");
 				if (branch != actualBranch) {
-					stderr.writeln("You specified you want to pull branch \"" ~ branch ~ "\", but a different branch (\" ~ actualBranch ~ \") is already checked out. Not pulling.");
+					stderr.writeln("You specified you want to pull branch \"" ~ branch ~ "\", but a different branch (\"" ~ actualBranch ~ "\") is already checked out. Not pulling.");
 					continue;
 				}
 			}
