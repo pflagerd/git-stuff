@@ -81,7 +81,7 @@ int main(string[] args) {
 				}
 			}
 
-			// auto cmd1 = "git -C " ~ directory ~ " git pull; popd >/dev/null";
+			// auto cmd1 = "git -C " ~ directory ~ " git pull >/dev/null";
 
 			// auto cmd1 = "pushd " ~ directory ~ " >/dev/null; git pull; popd >/dev/null";
 			// if (!branch.empty)
