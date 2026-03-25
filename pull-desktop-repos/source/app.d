@@ -90,10 +90,8 @@ int main(string[] args) {
 			// result = executeShell(cmd1);
 			// result.output.write();
 			// if (debugging) writeln("result.status == ", result.status);
-			break;
-			continue;
+			//continue;
 		}
-		break;
 	}
 
     file.close();
