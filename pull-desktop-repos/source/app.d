@@ -48,8 +48,11 @@ int main(string[] args) {
 			}
 
 			auto cmd3 = "git clone " ~ gitUrl ~ " " ~ directory ~ " >/dev/null";
-			if (!branch.empty)
+			if (!branch.empty) {
 				cmd3 = "git clone -b " ~ branch ~ " " ~ gitUrl ~ " " ~ directory ~ " >/dev/null";
+				writeln("cloning " ~ directory ~ " with branch " ~ branch);
+			} else
+				writeln("cloning " ~ directory);
 			if (debugging) stderr.writeln(cmd3);
 			auto result = executeShell(cmd3);
 			if (debugging) stderr.writeln("result.status == ",result.status);
@@ -81,17 +84,15 @@ int main(string[] args) {
 				}
 			}
 
-			// auto cmd1 = "git -C " ~ directory ~ " git pull >/dev/null";
+			cmd1 = "git -C " ~ directory ~ " pull >/dev/null";
 
-			// auto cmd1 = "pushd " ~ directory ~ " >/dev/null; git pull; popd >/dev/null";
-			// if (!branch.empty)
-			// 	cmd1 = "pushd " ~ directory ~ " >/dev/null; git pull origin " ~ branch ~"; popd >/dev/null";
-			// if (debugging) writeln("executing: " ~ cmd1);
-			// result = executeShell(cmd1);
-			// result.output.write();
-			// if (debugging) writeln("result.status == ", result.status);
-			//continue;
-		}
+			if (debugging) writeln("executing: " ~ cmd1);
+			writeln("pulling " ~ directory);
+			result = executeShell(cmd1);
+			if (debugging) stderr.writeln("result.status == ",result.status);
+			if (result.status != 0)
+				result.output.writeln();
+			}
 	}
 
     file.close();
