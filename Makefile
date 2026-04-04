@@ -1,19 +1,19 @@
 .PHONY: all clean test
 
 all:\
-	bin/add-repo-to-desktop\
-	bin/pull-desktop-repos
+	bin/add-nested\
+	bin/pull-nested
 
 
-bin/add-repo-to-desktop: add-repo-to-desktop/add-repo-to-desktop
-	cp add-repo-to-desktop/add-repo-to-desktop bin/
+bin/add-nested: add-nested/add-nested
+	cp add-nested/add-nested bin/
 
-bin/pull-desktop-repos: pull-desktop-repos/pull-desktop-repos
-	cp pull-desktop-repos/pull-desktop-repos bin/
+bin/pull-nested: pull-nested/pull-nested
+	cp pull-nested/pull-nested bin/
 
 
-add-repo-to-desktop/add-repo-to-desktop:
-	$(MAKE) -C add-repo-to-desktop
+add-nested/add-nested:
+	$(MAKE) -C add-nested
 
-pull-desktop-repos/pull-desktop-repos:
-	$(MAKE) -C pull-desktop-repos
+pull-nested/pull-nested:
+	$(MAKE) -C pull-nested
