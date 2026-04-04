@@ -4,6 +4,11 @@ all:\
 	bin/add-nested\
 	bin/pull-nested
 
+clean:
+	$(MAKE) -C add-nested clean
+	$(MAKE) -C pull-nested clean
+	rm -rf bin/add-nested bin/pull-nested
+
 
 bin/add-nested: add-nested/add-nested
 	cp add-nested/add-nested bin/
