@@ -18,7 +18,7 @@ int main() {
 
     foreach (line; file.byLine()) {
 		auto splitLine = line.split();
-		auto directory = splitLine[0];
+		auto directory = splitLine[0][1..$];
 		writeln("directory == \"" ~ directory ~ "\"");
 		if (debugging) stderr.writeln("directory == \"" ~ directory ~ "\"");
 		auto gitUrl = splitLine[1];
