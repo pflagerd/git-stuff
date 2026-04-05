@@ -17,8 +17,8 @@ bin/pull-nested: pull-nested/pull-nested
 	cp pull-nested/pull-nested bin/
 
 
-add-nested/add-nested:
+add-nested/add-nested: add-nested/add_nested.d
 	$(MAKE) -C add-nested
 
-pull-nested/pull-nested:
+pull-nested/pull-nested: pull-nested/pull_nested.d
 	$(MAKE) -C pull-nested
