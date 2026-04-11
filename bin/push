@@ -1,8 +1,8 @@
 #!/bin/bash
-IFS=$'\n'; for remote in $(git remote -v | sort -k 3 | egrep '\(push\)$' | sort -k 2 -u); do
+IFS=$'\n'; for remote in $(git remote -v | sort -k 3 | egrep '\(push\)$'); do
     for r in $(echo $remote | awk '{ print $1 }'); do
 	echo "pushing $r"
-        git push $r
+        echo git push $r
 	echo
     done
 done
