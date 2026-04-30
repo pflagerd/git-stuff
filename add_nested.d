@@ -149,7 +149,13 @@ private bool isRepoUrl(string possibleRepoUrl) {
 
 int main(string[] args) {    
     if (args.length == 1) {
-        stderr.writeln("add-nested repo-working-directory | remote-repo-url [...]");
+        stderr.writeln("add-nested repo-working-directory ... ");
+        stderr.writeln("  adds the repo-working-directory to .gitrepos and .gitignore");
+        stderr.writeln("  includes the url and branch from the repo-working-directory unless the branch is master in which case the branch is left empty in .gitrepos");
+        stderr.writeln("add-nested repo-url ... ");
+        stderr.writeln("  adds the repo-url to .gitrepos and .gitignore. Uses the filename part of the url.");
+        stderr.writeln("  assumes the master branch and doesn't include it in .gitrepos");
+
         return 1;
     }
     

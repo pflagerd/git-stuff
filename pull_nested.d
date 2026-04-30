@@ -50,24 +50,38 @@ int main() {
 				return 1;
 			}
 
-
-			auto cmd1 = "pushd " ~ directoryName ~ " >/dev/null; git pull; popd >/dev/null";
-			cmd1.writeln();
-			auto result = executeShell(cmd1);
-			result.output.write();
-			continue;
-		} else {
-			if (!directoryName.dirName().exists()) {
-				auto cmd2 = "mkdir -p " ~ directoryName.dirName();
-				cmd2.writeln();
-				auto result = executeShell(cmd2);
-				result.output.write();
+			if (splitLine.length == 3) { // if there's a branch specified ...
+				auto cmd1 = "git -C " ~ directoryName ~ " checkout " ~ splitLine[2];
+				debug cmd1.writeln();
+				auto result = executeShell(cmd1);
+				debug writeln("result.status = " ~ ", result.output = " ~ result.output);
 			}
 
-			auto cmd3 = "pushd " ~ directoryName.dirName() ~ " > /dev/null; git clone " ~ gitUrl ~ "; popd > /dev/null";
-			writeln(cmd3);
+			auto cmd1 = "git -C " ~ directoryName ~ " pull";
+			debug cmd1.writeln();
+			auto result = executeShell(cmd1);
+			debug writeln("result.status = " ~ ", result.output = " ~ result.output);
+			continue;
+		} else {
+			if (!directoryName.dirName().exists()) { // if directoryName's parent directory doesn't exist...
+				auto cmd2 = "mkdir -p " ~ directoryName.dirName();
+				debug cmd2.writeln();
+				auto result = executeShell(cmd2); // ... create it.
+				debug writeln("result.status = " ~ ", result.output = " ~ result.output);
+			}
+
+			auto cmd3 = "git clone " ~ gitUrl ~ " " ~ splitLine[0];
+
+			debug writeln(cmd3);
 			auto result = executeShell(cmd3);
-			result.output.writeln();
+			debug result.output.writeln();
+
+			if (splitLine.length == 3) { // If there is a branch specified in .gitignore, ...
+				auto cmd = "git -C " ~ directoryName ~ " checkout " ~ splitLine[2];
+				debug writeln(cmd);
+				result = executeShell(cmd);
+				debug writeln("result.status = " ~ ", result.output = " ~ result.output);
+			}
 		}
 	}
 
