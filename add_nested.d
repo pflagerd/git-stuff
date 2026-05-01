@@ -37,13 +37,15 @@ private int addRepoToDesktopFromWorkingDirectoryName(string directoryName) {
         return 1;
     }
 
-    debug writeln("if directoryName has no leading /, add it");
-    if (!directoryName.startsWith("/"))
-        directoryName = "/" ~ directoryName;
+    debug writeln("if directoryName has a leading /, remove it");
+    if (directoryName.startsWith("/"))
+        directoryName = directoryName[1 .. $];
+	debug writeln("directoryName = " ~ directoryName);
 
     debug writeln("if directoryName has no trailing /, add it");
     if (!directoryName.endsWith("/"))
         directoryName ~= "/";
+	debug writeln("directoryName = " ~ directoryName);
 
     if (!"./.gitignore".exists)
          std.file.write("./.gitignore", "");;
@@ -53,38 +55,37 @@ private int addRepoToDesktopFromWorkingDirectoryName(string directoryName) {
     gitIgnore.sort;
     
     debug writeln("Does it already exist in .gitignore?");
-    if (!gitIgnore.canFind(directoryName)) {
-        debug writeln("no, add line like this in the correct alphabetic position in the file:");
-        debug writeln("/directoryName/");
-        gitIgnore.insertInPlace(gitIgnore.assumeSorted.lowerBound(directoryName).count, directoryName);
+    if (!gitIgnore.canFind("/" ~ directoryName)) {
+        debug writeln("no, add line like this in the correct alphabetic position in the file: /" ~ directoryName);
+        gitIgnore.insertInPlace(gitIgnore.assumeSorted.lowerBound("/" ~ directoryName).count, "/" ~ directoryName); // Add back leading / for .gitignore
         debug writeln(gitIgnore);
         File file = "./.gitignore".File("wt");
         gitIgnore.each!(a => file.writeln(a));
-        debug writeln("re-write .gitrepos");
+        debug writeln("re-write .gitignore");
     } else
         debug writeln("already in .gitignore");
 
-    debug writeln("remove leading / from working directory");
     debug writeln("retrieve the \"origin\" remote from the working directory");
-    auto retVal = executeShell("git -C " ~ directoryName[1..$] ~ " remote get-url origin");
-    if (retVal.status != 0) {
-        stderr.writeln("git did not run correctly: " ~ retVal.output);
+    auto result = executeShell("git -C " ~ directoryName ~ " remote get-url origin");
+	debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
+
+    if (result.status != 0) {
+        stderr.writeln("git did not run correctly: " ~ result.output);
         return 1;
     }
     
-    debug writeln(retVal.output);
-    string remoteUrl = retVal.output.strip;
+    string remoteUrl = result.output.strip;
 
     debug writeln("retrieve the active branch");
-    retVal = executeShell("git -C " ~ directoryName[1..$] ~ " branch");
-    if (retVal.status != 0) {
-        stderr.writeln("git did not run correctly: " ~ retVal.output);
+    result = executeShell("git -C " ~ directoryName ~ " branch");
+    if (result.status != 0) {
+        stderr.writeln("git did not run correctly: " ~ result.output);
         return 1;
     }
 
     string activeBranch = "";
-    debug writeln("retVal.output == " ~ retVal.output);
-    string[] branches = retVal.output.splitLines;
+    debug writeln("result.output == " ~ result.output);
+    string[] branches = result.output.splitLines;
     foreach (string branch; branches)
         if (branch.startsWith("*")) {
             activeBranch = branch.split(" ")[1];

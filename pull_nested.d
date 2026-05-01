@@ -10,7 +10,7 @@ import std.string;
 
 static const auto gitrepos = ".gitrepos";
 
-int main() {
+int main(string[] args) {
     if (!gitrepos.exists) {
 		stderr.writeln(gitrepos ~ " does not exist in the current working directory. Is your current working directory set to a desktop directory?");
 		return 1;
@@ -54,20 +54,20 @@ int main() {
 				auto cmd1 = "git -C " ~ directoryName ~ " checkout " ~ splitLine[2];
 				debug cmd1.writeln();
 				auto result = executeShell(cmd1);
-				debug writeln("result.status = " ~ ", result.output = " ~ result.output);
+				debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
 			}
 
 			auto cmd1 = "git -C " ~ directoryName ~ " pull";
 			debug cmd1.writeln();
 			auto result = executeShell(cmd1);
-			debug writeln("result.status = " ~ ", result.output = " ~ result.output);
+				debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
 			continue;
 		} else {
 			if (!directoryName.dirName().exists()) { // if directoryName's parent directory doesn't exist...
 				auto cmd2 = "mkdir -p " ~ directoryName.dirName();
 				debug cmd2.writeln();
 				auto result = executeShell(cmd2); // ... create it.
-				debug writeln("result.status = " ~ ", result.output = " ~ result.output);
+				debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
 			}
 
 			auto cmd3 = "git clone " ~ gitUrl ~ " " ~ splitLine[0];
@@ -80,7 +80,7 @@ int main() {
 				auto cmd = "git -C " ~ directoryName ~ " checkout " ~ splitLine[2];
 				debug writeln(cmd);
 				result = executeShell(cmd);
-				debug writeln("result.status = " ~ ", result.output = " ~ result.output);
+				debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
 			}
 		}
 	}
