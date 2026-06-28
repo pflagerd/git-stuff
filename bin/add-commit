@@ -1,3 +1,7 @@
 #!/bin/bash
-git add "$@"
+if [ "$#" -eq 0 ]; then
+  git add .
+else
+  git add "$@"
+fi
 git commit -a -m"progress"
