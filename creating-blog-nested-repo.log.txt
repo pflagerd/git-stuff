@@ -1,0 +1,322 @@
+dell7750:~/desktops/default/detect-speech> echo "# detect-speech" >> README.md
+git init
+git add README.md
+git commit -m "first commit"
+git branch -M master
+git remote add origin git@github.com:pflagerd/detect-speech.git
+git push -u origin master
+hint: Using 'master' as the name for the initial branch. This default branch name
+hint: will change to "main" in Git 3.0. To configure the initial branch name
+hint: to use in all of your new repositories, which will suppress this warning,
+hint: call:
+hint:
+hint:   git config --global init.defaultBranch <name>
+hint:
+hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+hint: 'development'. The just-created branch can be renamed via this command:
+hint:
+hint:   git branch -m <name>
+hint:
+hint: Disable this message with "git config set advice.defaultBranchName false"
+Initialized empty Git repository in /home/oy753c/desktops/default/detect-speech/.git/
+[master (root-commit) 9b056b8] first commit
+ 1 file changed, 1 insertion(+)
+ create mode 100644 README.md
+Enumerating objects: 3, done.
+Counting objects: 100% (3/3), done.
+Writing objects: 100% (3/3), 233 bytes | 233.00 KiB/s, done.
+Total 3 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+To github.com:pflagerd/detect-speech.git
+ * [new branch]      master -> master
+branch 'master' set up to track 'origin/master'.
+dell7750:~/desktops/default/detect-speech> pwd
+/home/oy753c/desktops/default/detect-speech
+dell7750:~/desktops/default/detect-speech> ls
+README.md
+dell7750:~/desktops/default/detect-speech> git clone git@github.com:pflagerd/blog-bootstrap blog
+Cloning into 'blog'...
+remote: Enumerating objects: 2262, done.
+remote: Counting objects: 100% (62/62), done.
+remote: Compressing objects: 100% (42/42), done.
+remote: Total 2262 (delta 35), reused 42 (delta 19), pack-reused 2200 (from 1)
+Receiving objects: 100% (2262/2262), 109.48 MiB | 24.32 MiB/s, done.
+Resolving deltas: 100% (1368/1368), done.
+dell7750:~/desktops/default/detect-speech> ls
+README.md  blog
+dell7750:~/desktops/default/detect-speech> pwd
+/home/oy753c/desktops/default/detect-speech
+dell7750:~/desktops/default/detect-speech> ls
+README.md  blog
+dell7750:~/desktops/default/detect-speech>  cd /home/oy753c/desktops/
+dell7750:~/desktops>  cd /home/oy753c/desktops/default/detect-speech
+dell7750:~/desktops/default/detect-speech> git remote -v
+origin  git@github.com:pflagerd/detect-speech.git (fetch)
+origin  git@github.com:pflagerd/detect-speech.git (push)
+dell7750:~/desktops/default/detect-speech> git status
+On branch master
+Your branch is up to date with 'origin/master'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   README.md
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        blog/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+dell7750:~/desktops/default/detect-speech> d blog/^C
+dell7750:~/desktops/default/detect-speech> cd blog/
+dell7750:~/desktops/default/detect-speech/blog> git remote -v
+origin  git@github.com:pflagerd/blog-bootstrap (fetch)
+origin  git@github.com:pflagerd/blog-bootstrap (push)
+dell7750:~/desktops/default/detect-speech/blog> git checkout -b detect-speech
+Switched to a new branch 'detect-speech'
+dell7750:~/desktops/default/detect-speech/blog> git status
+On branch detect-speech
+nothing to commit, working tree clean
+dell7750:~/desktops/default/detect-speech/blog> ls
+README.html  RUNME  SETMEUP  blog.css  blog.js  img  index.html  index.js  inline-index-html.mjs  meta-blog.html  package-lock.json  package.json
+dell7750:~/desktops/default/detect-speech/blog> vi .gitrepos
+dell7750:~/desktops/default/detect-speech/blog> cat ../../.gitrepos
+5-day-gen-ai-course-with-google/ git@zax.pflager.net:machine-learning/5-day-gen-ai-course-with-google.git
+andrew-ng/ ssh://pflagerd@git.code.sf.net/p/pflagerd/andrew-ng
+bc-memorial/ git@zax.pflager.net:handmaking/bc-memorial.git
+blog-bootstrap/ git@github.com:pflagerd/blog-bootstrap.git
+bok/ git@zax.pflager.net:oy753c/bok.git
+bracket/ git@github.com:pflagerd/bracket.git
+daniel.p.pflager.website/ ssh://pflagerd@git.code.sf.net/p/pflagerd/daniel.p.pflager.website
+danielpflager.resume/ git@github.com:pflagerd/danielpflager.resume
+deeplearning.ai/ git@github.com:pflagerd/deeplearning.ai
+eurodollar-university/ ssh://pflagerd@git.code.sf.net/p/pflagerd/eurodollar-university
+genki/ ssh://pflagerd@git.code.sf.net/p/pflagerd/genki
+genmitsu-laser/ ssh://pflagerd@git.code.sf.net/p/pflagerd/genmitsu-laser
+genmitsu-proverxl-4030/ ssh://pflagerd@git.code.sf.net/p/pflagerd/genmitsu-proverxl-4030
+gerry-and-dan/ git@github.com:pflagerd/gerry-and-dan.git
+git-stuff/ git@github.com:pflagerd/git-stuff.git
+gmail-bok-archiver-add-on/ git@github.com:pflagerd/gmail-bok-archiver-add-on.git
+google-digital-marketing-and-e-commerce/ git@gitlab.com:pflagerd/google-digital-marketing-and-e-commerce.git
+hafanpp/ git@github.com:pflagerd/hafanpp.git
+health/ git@zax.pflager.net:oy753c/health.git
+house/ git@zax.pflager.net:oy753c/house.git
+how-to-freecad/ ssh://pflagerd@git.code.sf.net/p/pflagerd/how-to-freecad
+ideas/ git@github.com:pflagerd/ideas.git
+interactive-curves-and-surfaces-three-js/ git@github.com:pflagerd/interactive-curves-and-surfaces-three-js.git
+inventRight/ git@github.com:pflagerd/inventRight.git
+investing/ git@github.com:pflagerd/investing.git
+katex-editor/ ssh://pflagerd@git.code.sf.net/p/algorithms/katex-editor
+learn-d/ ssh://pflagerd@git.code.sf.net/p/pflagerd/learn-d
+learn-gas/ ssh://pflagerd@git.code.sf.net/p/pflagerd/learn-gas
+learncanvasapi/ ssh://pflagerd@git.code.sf.net/p/pflagerd/learncanvasapi
+linear-algebra-khan-academy/ git@gitlab.com:pflagerd/linear-algebra-khan-academy.git
+linux-kernel-and-drivers/ ssh://pflagerd@git.code.sf.net/p/pflagerd/linux-kernel-and-drivers
+machine-learning-course/ ssh://pflagerd@git.code.sf.net/p/pflagerd/machine-learning-course
+macro-economics/ git@github.com:pflagerd/macro-economics.git
+medpowerhub.com/ git@github.com:pflagerd/medpowerhub.com.git
+mum/ git@github.com:pflagerd/mum.git
+node-samples/ git@github.com:googleworkspace/node-samples.git
+nodejs-bootstrap/ git@github.com:pflagerd/nodejs-bootstrap.git
+occult/ ssh://pflagerd@git.code.sf.net/p/pflagerd/occult
+openai-product-explorations/ git@github.com:openai-product-explorations/openai-product-explorations.git
+openart/ git@github.com:pflagerd/openart
+pdf-to-text/ ssh://pflagerd@git.code.sf.net/p/pflagerd/pdf-to-text
+pflager.net/ git@zax.pflager.net:pflager.net/pflager.net.git
+pflagerd.github.io/ git@github.com:pflagerd/pflagerd.github.io.git
+psilocybin-magic-mushroom-growers-guide/ git@github.com:pflagerd/psilocybin-magic-mushroom-growers-guide.git
+psilocybin-research/ git@github.com:pflagerd/psilocybin-research.git
+psycho-spiritual-health/ git@github.com:pflagerd/psycho-spiritual-health.git
+py-stuff/ ssh://pflagerd@git.code.sf.net/p/pflagerd/py-stuff
+rebel-economist/ ssh://pflagerd@git.code.sf.net/p/pflagerd/rebel-economist
+retrieve-youtube-history/ ssh://pflagerd@git.code.sf.net/p/pflagerd/retrieve-youtube-history
+sainsmart/ git@github.com:pflagerd/sainsmart
+seattle-wholesale-growers-market-private/ git@github.com:pflagerd/seattle-wholesale-growers-market-private.git
+seattle-wholesale-growers-market/ git@github.com:pflagerd/seattle-wholesale-growers-market.git
+shane-hummus/ git@github.com:pflagerd/shane-hummus.git
+sherri-and-dan/ git@github.com:pflagerd/sherri-and-dan
+some-investment-books/ git@github.com:anuragjain1/some-investment-books.git
+sophie-and-dad/ git@gitlab.com:pflagerd/sophie-and-dad.git
+synthesia/ git@github.com:pflagerd/synthesia
+systems/ git@zax.pflager.net:systems/systems.git
+the-compound/ git@zax.pflager.net:oy753c/the-compound.git
+the-one-person-business/ ssh://pflagerd@git.code.sf.net/p/pflagerd/the-one-person-business
+the-ultimate-youtube-masterclass/ git@github.com:pflagerd/the-ultimate-youtube-masterclass.git
+toadstoolflowerclub.com/ git@github.com:pflagerd/toadstoolflowerclub.com.git
+trommel-screener/ git@zax.pflager.net:handmaking/trommel-screener.git
+two-astonishingly-different-persons-inhabit-our-heads/ git@zax.pflager.net:learning/two-astonishingly-different-persons-inhabit-our-heads.git
+utils/ ssh://pflagerd@git.code.sf.net/p/pflagerd/utils
+vis-network-basic-usage/ ssh://pflagerd@git.code.sf.net/p/pflagerd/vis-network-basic-usage
+vis-network/ git@github.com:visjs/vis-network.git
+work-in-progress/ ssh://pflagerd@git.code.sf.net/p/pflagerd/work-in-progress
+yoga/ ssh://pflagerd@git.code.sf.net/p/pflagerd/yoga
+youtube-move-videos-between-my-playlists/ git@github.com:pflagerd/youtube-move-videos-between-my-playlists.git
+youtube-to-text/ git@github.com:pflagerd/youtube-to-text.git
+dell7750:~/desktops/default/detect-speech/blog> ls
+README.html  RUNME  SETMEUP  blog.css  blog.js  img  index.html  index.js  inline-index-html.mjs  meta-blog.html  package-lock.json  package.json
+dell7750:~/desktops/default/detect-speech/blog> cat .blogcls
+cat: .blogcls: No such file or directory
+dell7750:~/desktops/default/detect-speech/blog> ls
+README.html  RUNME  SETMEUP  blog.css  blog.js  img  index.html  index.js  inline-index-html.mjs  meta-blog.html  package-lock.json  package.json
+dell7750:~/desktops/default/detect-speech/blog> cat .gitrepos
+/blog git@github.com:pflagerd/blog-bootstrap detect-speech
+dell7750:~/desktops/default/detect-speech/blog> vi .gitrepos
+dell7750:~/desktops/default/detect-speech/blog> git status
+On branch detect-speech
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        .gitrepos
+
+nothing added to commit but untracked files present (use "git add" to track)
+dell7750:~/desktops/default/detect-speech/blog> pwd
+/home/oy753c/desktops/default/detect-speech/blog
+dell7750:~/desktops/default/detect-speech/blog> ls
+README.html  RUNME  SETMEUP  blog.css  blog.js  img  index.html  index.js  inline-index-html.mjs  meta-blog.html  package-lock.json  package.json
+dell7750:~/desktops/default/detect-speech/blog> cat .gitrepos
+blog/ git@github.com:pflagerd/blog-bootstrap detect-speech
+dell7750:~/desktops/default/detect-speech/blog> mv .gitrepos ..
+dell7750:~/desktops/default/detect-speech/blog> cd ..
+dell7750:~/desktops/default/detect-speech> ls
+README.md  blog
+dell7750:~/desktops/default/detect-speech> cat .gitrepos
+blog/ git@github.com:pflagerd/blog-bootstrap detect-speech
+dell7750:~/desktops/default/detect-speech> ls
+README.md  blog
+dell7750:~/desktops/default/detect-speech> cat .gitrepos
+blog/ git@github.com:pflagerd/blog-bootstrap detect-speech
+dell7750:~/desktops/default/detect-speech> git status
+On branch master
+Your branch is up to date with 'origin/master'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   README.md
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        .gitrepos
+        blog/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+dell7750:~/desktops/default/detect-speech> add-commit-and-push
+warning: adding embedded git repository: blog
+hint: You've added another git repository inside your current repository.
+hint: Clones of the outer repository will not contain the contents of
+hint: the embedded repository and will not know how to obtain it.
+hint: If you meant to add a submodule, use:
+hint:
+hint:   git submodule add <url> blog
+hint:
+hint: If you added this path by mistake, you can remove it from the
+hint: index with:
+hint:
+hint:   git rm --cached blog
+hint:
+hint: See "git help submodule" for more information.
+hint: Disable this message with "git config set advice.addEmbeddedRepo false"
+[master 0365cd9] progress
+ 3 files changed, 10 insertions(+)
+ create mode 100644 .gitrepos
+ create mode 160000 blog
+pushing origin
+Enumerating objects: 6, done.
+Counting objects: 100% (6/6), done.
+Delta compression using up to 16 threads
+Compressing objects: 100% (4/4), done.
+Writing objects: 100% (4/4), 580 bytes | 580.00 KiB/s, done.
+Total 4 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+To github.com:pflagerd/detect-speech.git
+   9b056b8..0365cd9  master -> master
+
+dell7750:~/desktops/default/detect-speech> ls
+README.md  blog
+dell7750:~/desktops/default/detect-speech> which pull
+/home/oy753c/.local/share/git-stuff/bin/pull
+dell7750:~/desktops/default/detect-speech> cat `which pull`
+#!/bin/bash
+git pull $@
+dell7750:~/desktops/default/detect-speech> pull-nested
+load .gitrepos file
+repo == "blog/ git@github.com:pflagerd/blog-bootstrap detect-speech"
+if directory has a leading /, remove it: blog/
+directoryName == "blog/"
+gitUrl == "git@github.com:pflagerd/blog-bootstrap"
+pushd blog/ >/dev/null; git pull; popd >/dev/null
+There is no tracking information for the current branch.
+Please specify which branch you want to merge with.
+See git-pull(1) for details.
+
+    git pull <remote> <branch>
+
+If you wish to set tracking information for this branch you can do so with:
+
+    git branch --set-upstream-to=origin/<branch> detect-speech
+
+dell7750:~/desktops/default/detect-speech> git pull origin ^C
+dell7750:~/desktops/default/detect-speech> git remote -v
+origin  git@github.com:pflagerd/detect-speech.git (fetch)
+origin  git@github.com:pflagerd/detect-speech.git (push)
+dell7750:~/desktops/default/detect-speech> git pull origin master
+From github.com:pflagerd/detect-speech
+ * branch            master     -> FETCH_HEAD
+Already up to date.
+dell7750:~/desktops/default/detect-speech> git pull
+Already up to date.
+dell7750:~/desktops/default/detect-speech> ls
+README.md  blog
+dell7750:~/desktops/default/detect-speech> cd blog/
+dell7750:~/desktops/default/detect-speech/blog> git status
+On branch detect-speech
+nothing to commit, working tree clean
+dell7750:~/desktops/default/detect-speech/blog> cat .git
+.git/       .gitignore
+dell7750:~/desktops/default/detect-speech/blog> cat .gitignore
+.idea/
+node_modules/
+inline-index.html
+inline-meta-blog.html
+window-size.json
+dell7750:~/desktops/default/detect-speech/blog> git pull
+There is no tracking information for the current branch.
+Please specify which branch you want to merge with.
+See git-pull(1) for details.
+
+    git pull <remote> <branch>
+
+If you wish to set tracking information for this branch you can do so with:
+
+    git branch --set-upstream-to=origin/<branch> detect-speech
+
+dell7750:~/desktops/default/detect-speech/blog> git pull origin detect-speech
+fatal: couldn't find remote ref detect-speech
+dell7750:~/desktops/default/detect-speech/blog> git status
+On branch detect-speech
+nothing to commit, working tree clean
+dell7750:~/desktops/default/detect-speech/blog> git push
+fatal: The current branch detect-speech has no upstream branch.
+To push the current branch and set the remote as upstream, use
+
+    git push --set-upstream origin detect-speech
+
+To have this happen automatically for branches without a tracking
+upstream, see 'push.autoSetupRemote' in 'git help config'.
+
+dell7750:~/desktops/default/detect-speech/blog> git push origin detect-speech
+Total 0 (delta 0), reused 0 (delta 0), pack-reused 0 (from 0)
+remote:
+remote: Create a pull request for 'detect-speech' on GitHub by visiting:
+remote:      https://github.com/pflagerd/blog-bootstrap/pull/new/detect-speech
+remote:
+To github.com:pflagerd/blog-bootstrap
+ * [new branch]      detect-speech -> detect-speech
+dell7750:~/desktops/default/detect-speech/blog> git pull origin detect-speech
+From github.com:pflagerd/blog-bootstrap
+ * branch            detect-speech -> FETCH_HEAD
+Already up to date.
+dell7750:~/desktops/default/detect-speech/blog> ls
+README.html  RUNME  SETMEUP  blog.css  blog.js  img  index.html  index.js  inline-index-html.mjs  meta-blog.html  package-lock.json  package.json
+dell7750:~/desktops/default/detect-speech/blog> pwd
+/home/oy753c/desktops/default/detect-speech/blog
+dell7750:~/desktops/default/detect-speech/blog> ls
+README.html  RUNME  SETMEUP  blog.css  blog.js  img  index.html  index.js  inline-index-html.mjs  meta-blog.html  package-lock.json  package.json
+dell7750:~/desktops/default/detect-speech/blog>

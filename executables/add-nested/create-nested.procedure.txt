@@ -1,0 +1,22 @@
+#/bin/bash
+
+# if the current directory set to a git repository, ask if this is where we want the new nested repository to be created?
+# if the current directory is not set to a git repository, instruct user that it must be and then display usage.
+# if no arguments exist, instruct user to supply at least the name of one repository to be created, and then display usage
+# if too many arguments exist, display usage
+# if more than one argument exists, warn that we're going to create a bunch of nested repos.
+# for each repo specified
+#     if it already exists, display error message and skip it
+#     if it doesn't already exist, "create it".
+#
+
+
+
+
+# How to "create it"
+# if the name of the repository to be created has not been specified, ask for it
+# if the name of the repository to be create has been specified, ask whether its name transformed to a github url exists.
+# if the github repository url does not exist, ask for the name of the github url to be cloned as the nested repository.
+# if the github repository url does exist, assume that is the url to be used.
+# Ask if he wants to use the name part of the url for the local name, or a different name.
+# Ask whether there's a particular branch in the remote repo
