@@ -1,0 +1,34 @@
+import os
+import subprocess
+from pathlib import Path
+import shutil
+
+def confirm(prompt: str, default: bool = False) -> bool:
+    """Prompt for a yes/no answer. `default` is returned if user just hits Enter."""
+    suffix = " [Y/n] " if default else " [y/N] "
+    while True:
+        reply = input(prompt + suffix).strip().lower()
+        if reply == "":
+            return default
+        if reply in ("y", "yes"):
+            return True
+        if reply in ("n", "no"):
+            return False
+        print("Please answer 'y' or 'n'.")
+
+gitrepos_dirs = []
+with open('../.gitrepos', 'r') as f:
+    for line in f:
+        line = line.rstrip('\n')
+        gitrepos_dirs.append(line[0])
+
+p = Path("../")
+dirs = [d for d in p.iterdir() if d.is_dir()]
+
+for dir in dirs:
+    print(f"dir == {dir}")
+    if dir not in gitrepos_dirs:
+        if confirm(f"Do you really want to delete directory {dir} recursively?"):
+            print("Deleting...")
+            shutil.rmtree(dir, ignore_errors=True)
+            print(f"Deleted {dir}")
