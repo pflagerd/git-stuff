@@ -1,0 +1,10 @@
+# Two fields separated by space.
+# First field is the sha-1 of the this repository at the time of the fork
+# Second field is the forked child repository and @sha-1 at the time the child was forked from the parent repository
+# The second field may contain an @directory after the @sha-1. That @directory is the subdirectory within the child repository where the fork was put.
+# These branches would have had the same contents in both repositories as at these two sha-1s.
+# If branch names exist in the repositories, they may be used instead of sha-1s
+# These fields must be url encoded so that they contain no spaces within each field
+# There is a file in each child repository called .fork which contains the same information, but in the opposite order.
+# There may be more than one child repository forked from this repo. That is allowed.
+a58f06b005c2d7645c5547689ee3c6e4f4824ac7 git@github.com:pflagerd/youtube-to-text.git@947f226aefc0fa7a159666cab47392976cebc5e3@blog
