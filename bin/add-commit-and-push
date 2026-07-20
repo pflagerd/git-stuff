@@ -1,7 +1,0 @@
-#!/bin/bash
-git add .
-if [ $# == 0 ]; then
-    commit-and-push
-else
-    commit-and-push "$1"
-fi
