@@ -2,7 +2,6 @@
 import argparse
 import subprocess
 import sys
-from pathlib import Path
 from urllib.parse import urlparse
 
 verbose = False
@@ -55,7 +54,7 @@ def main(argv):
 
     matches = is_it(paths)
     for path in matches:
-        print(Path(path).name)
+        print(path)
 
     return 0 if matches else 1
 

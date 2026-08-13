@@ -2,14 +2,15 @@
 import argparse
 import subprocess
 import sys
+from pathlib import Path
 from urllib.parse import urlparse
 
 verbose = False
 
 
 def is_it(paths) -> list:
-    """The subset of paths that are git working directories whose 'origin' remote host ends with '.pflager.net'."""
-    matches = []
+    """The subset of paths where a remote named after the origin's host did not already exist and was added."""
+    added = []
     for path in paths:
         is_work_tree = subprocess.run(
             ["git", "-C", str(path), "rev-parse", "--is-inside-work-tree"],
@@ -37,10 +38,33 @@ def is_it(paths) -> list:
         if verbose:
             print(f"{path}: origin host == {host}")
 
-        if host and host.endswith(".pflager.net"):
-            matches.append(path)
+        if not host:
+            continue
 
-    return matches
+        remotes = subprocess.run(
+            ["git", "-C", str(path), "remote"],
+            capture_output=True,
+            text=True,
+        )
+        if remotes.returncode != 0 or host in remotes.stdout.split():
+            continue
+
+        remote_add = subprocess.run(
+            ["git", "-C", str(path), "remote", "add", host, url],
+            capture_output=True,
+            text=True,
+        )
+        if remote_add.returncode != 0:
+            if verbose:
+                print(f"{path}: failed to add remote '{host}': {remote_add.stderr.strip()}")
+            continue
+
+        if verbose:
+            print(f"{path}: added remote '{host}' -> {url}")
+
+        added.append(path)
+
+    return added
 
 
 def main(argv):
@@ -52,11 +76,11 @@ def main(argv):
     verbose = args.verbose
     paths = args.paths or ["."]
 
-    matches = is_it(paths)
-    for path in matches:
-        print(path)
+    added = is_it(paths)
+    for path in added:
+        print(Path(path).name)
 
-    return 0 if matches else 1
+    return 0 if added else 1
 
 
 if __name__ == "__main__":
