@@ -7,6 +7,7 @@ import std.process;
 import std.range;
 import std.stdio;
 import std.string;
+import std.utf;
 
 static const auto gitrepos = ".gitrepos";
 
@@ -29,13 +30,14 @@ int main() {
 			directoryName = directoryName[1..$];
 
 		writeln("directoryName == \"" ~ directoryName ~ "\"");
+		writeln(typeof(directoryName).stringof);
 		auto gitUrl = splitLine[1];
 		writeln("gitUrl == \"" ~ gitUrl ~ "\"");
 
-
-		if (directoryName.exists()) {
+		writefln("exists(%s) = %s, isDir would throw if false", directoryName, std.file.exists(directoryName));
+		if (std.file.exists(directoryName)) {
 			try {
-				if (!directoryName.isDir)
+				if (!directoryName.isDir())
 					throw new FileException(directoryName);
 			} catch (FileException fe) {
 				stderr.writeln(directoryName ~ " is not a directory. Cannot clone or pull repo.");
@@ -51,23 +53,28 @@ int main() {
 			}
 
 
-			auto cmd1 = "pushd " ~ directoryName ~ " >/dev/null; git pull; popd >/dev/null";
+			auto cmd1 = "git -C " ~ directoryName ~ " pull";
 			cmd1.writeln();
 			auto result = executeShell(cmd1);
 			result.output.write();
 			continue;
 		} else {
-			if (!directoryName.dirName().exists()) {
-				auto cmd2 = "mkdir -p " ~ directoryName.dirName();
-				cmd2.writeln();
-				auto result = executeShell(cmd2);
-				result.output.write();
-			}
-
-			auto cmd3 = "pushd " ~ directoryName.dirName() ~ " > /dev/null; git clone " ~ gitUrl ~ "; popd > /dev/null";
+			auto cmd3 = "git clone " ~ gitUrl ~ " " ~ directoryName;
 			writeln(cmd3);
 			auto result = executeShell(cmd3);
 			result.output.writeln();
+
+			auto branchName = directoryName;
+			if (branchName[$ - branchName.strideBack(branchName.length)] == '/')
+				branchName = directoryName[0 .. $ - branchName.strideBack(branchName.length)];
+			if (splitLine.length == 3)
+				branchName = splitLine[2];
+
+			auto cmd4 = "git -C " ~ directoryName ~ " checkout " ~ branchName;
+			writeln(cmd4);
+			result = executeShell(cmd4);
+			result.output.writeln();
+
 		}
 	}
 

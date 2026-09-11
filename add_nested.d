@@ -65,7 +65,7 @@ private int addRepoToDesktopFromWorkingDirectoryName(string directoryName) {
         debug writeln("already in .gitignore");
 
     debug writeln("remove leading / from working directory");
-    debug writeln("retrieve the \"origin\" remote from the working directory");
+    debug writeln("retrieve the \"origin\" remote from the working directory"); // the -C option accepts a directory with or without trailing /
     auto retVal = executeShell("git -C " ~ directoryName[1..$] ~ " remote get-url origin");
     if (retVal.status != 0) {
         stderr.writeln("git did not run correctly: " ~ retVal.output);
