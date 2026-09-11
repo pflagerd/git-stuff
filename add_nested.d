@@ -37,13 +37,15 @@ private int addRepoToDesktopFromWorkingDirectoryName(string directoryName) {
         return 1;
     }
 
-    debug writeln("if directoryName has no leading /, add it");
-    if (!directoryName.startsWith("/"))
-        directoryName = "/" ~ directoryName;
+    debug writeln("if directoryName has a leading /, remove it");
+    if (directoryName.startsWith("/"))
+        directoryName = directoryName[1 .. $];
+	debug writeln("directoryName = " ~ directoryName);
 
     debug writeln("if directoryName has no trailing /, add it");
     if (!directoryName.endsWith("/"))
         directoryName ~= "/";
+	debug writeln("directoryName = " ~ directoryName);
 
     if (!"./.gitignore".exists)
          std.file.write("./.gitignore", "");;
@@ -53,14 +55,13 @@ private int addRepoToDesktopFromWorkingDirectoryName(string directoryName) {
     gitIgnore.sort;
     
     debug writeln("Does it already exist in .gitignore?");
-    if (!gitIgnore.canFind(directoryName)) {
-        debug writeln("no, add line like this in the correct alphabetic position in the file:");
-        debug writeln("/directoryName/");
-        gitIgnore.insertInPlace(gitIgnore.assumeSorted.lowerBound(directoryName).count, directoryName);
+    if (!gitIgnore.canFind("/" ~ directoryName)) {
+        debug writeln("no, add line like this in the correct alphabetic position in the file: /" ~ directoryName);
+        gitIgnore.insertInPlace(gitIgnore.assumeSorted.lowerBound("/" ~ directoryName).count, "/" ~ directoryName); // Add back leading / for .gitignore
         debug writeln(gitIgnore);
         File file = "./.gitignore".File("wt");
         gitIgnore.each!(a => file.writeln(a));
-        debug writeln("re-write .gitrepos");
+        debug writeln("re-write .gitignore");
     } else
         debug writeln("already in .gitignore");
 
@@ -72,11 +73,10 @@ private int addRepoToDesktopFromWorkingDirectoryName(string directoryName) {
         return 1;
     }
     
-    debug writeln(retVal.output);
     string remoteUrl = retVal.output.strip;
 
     debug writeln("retrieve the active branch");
-    retVal = executeShell("git -C " ~ directoryName[1..$] ~ " branch");
+    retVal = executeShell("git -C " ~ directoryName ~ " branch");
     if (retVal.status != 0) {
         stderr.writeln("git did not run correctly: " ~ retVal.output);
         return 1;
@@ -149,7 +149,13 @@ private bool isRepoUrl(string possibleRepoUrl) {
 
 int main(string[] args) {    
     if (args.length == 1) {
-        stderr.writeln("add-nested repo-working-directory | remote-repo-url [...]");
+        stderr.writeln("add-nested repo-working-directory ... ");
+        stderr.writeln("  adds the repo-working-directory to .gitrepos and .gitignore");
+        stderr.writeln("  includes the url and branch from the repo-working-directory unless the branch is master in which case the branch is left empty in .gitrepos");
+        stderr.writeln("add-nested repo-url ... ");
+        stderr.writeln("  adds the repo-url to .gitrepos and .gitignore. Uses the filename part of the url.");
+        stderr.writeln("  assumes the master branch and doesn't include it in .gitrepos");
+
         return 1;
     }
     

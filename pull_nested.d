@@ -11,7 +11,7 @@ import std.utf;
 
 static const auto gitrepos = ".gitrepos";
 
-int main() {
+int main(string[] args) {
     if (!gitrepos.exists) {
 		stderr.writeln(gitrepos ~ " does not exist in the current working directory. Is your current working directory set to a desktop directory?");
 		return 1;
@@ -20,6 +20,7 @@ int main() {
     debug writeln("load .gitrepos file");
     string[] gitRepos = "./.gitrepos".readText().splitLines;
     gitRepos.sort;
+    auto retVal = 0;
 
     foreach (repo; gitRepos) {
 		debug writeln("repo == \"" ~ repo ~ "\"");
@@ -33,6 +34,11 @@ int main() {
 		writeln(typeof(directoryName).stringof);
 		auto gitUrl = splitLine[1];
 		writeln("gitUrl == \"" ~ gitUrl ~ "\"");
+		auto branchName = directoryName;
+		if (branchName[$ - branchName.strideBack(branchName.length)] == '/')
+			branchName = directoryName[0 .. $ - branchName.strideBack(branchName.length)];
+		if (splitLine.length == 3)
+			branchName = splitLine[2];
 
 		writefln("exists(%s) = %s, isDir would throw if false", directoryName, std.file.exists(directoryName));
 		if (std.file.exists(directoryName)) {
@@ -41,6 +47,7 @@ int main() {
 					throw new FileException(directoryName);
 			} catch (FileException fe) {
 				stderr.writeln(directoryName ~ " is not a directory. Cannot clone or pull repo.");
+				retVal = 2;
 				continue;
 			}
 
@@ -49,9 +56,16 @@ int main() {
 					throw new FileException(directoryName);
 			} catch (FileException fe) {
 				stderr.writeln(directoryName ~ "/.git/ is not a directory. Cannot clone or pull repo.");
-				return 1;
+				retVal = 2;
+				continue;
 			}
 
+			if (splitLine.length == 3) { // if there's a branch specified ...
+				auto cmd1 = "git -C " ~ directoryName ~ " checkout " ~ branchName;
+				debug cmd1.writeln();
+				auto result = executeShell(cmd1);
+				debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
+			}
 
 			auto cmd1 = "git -C " ~ directoryName ~ " pull";
 			cmd1.writeln();
@@ -64,19 +78,12 @@ int main() {
 			auto result = executeShell(cmd3);
 			result.output.writeln();
 
-			auto branchName = directoryName;
-			if (branchName[$ - branchName.strideBack(branchName.length)] == '/')
-				branchName = directoryName[0 .. $ - branchName.strideBack(branchName.length)];
-			if (splitLine.length == 3)
-				branchName = splitLine[2];
-
 			auto cmd4 = "git -C " ~ directoryName ~ " checkout " ~ branchName;
 			writeln(cmd4);
 			result = executeShell(cmd4);
 			result.output.writeln();
-
 		}
 	}
 
-    return 2;
+    return retVal;
 }

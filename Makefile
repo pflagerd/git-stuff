@@ -9,7 +9,7 @@ clean:
 
 
 bin/add-nested: add_nested.d
-	dmd -wi -g -unittest -debug add_nested.d -of=bin/add-nested
+	dmd -wi -gf -unittest -debug add_nested.d -of=bin/add-nested
 
 bin/pull-nested: pull_nested.d
-	dmd -wi -g -unittest -debug pull_nested.d -of=bin/pull-nested
+	dmd -wi -gf -unittest -debug pull_nested.d -of=bin/pull-nested
