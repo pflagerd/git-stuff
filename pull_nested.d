@@ -60,12 +60,10 @@ int main(string[] args) {
 				continue;
 			}
 
-			if (splitLine.length == 3) { // if there's a branch specified ...
-				auto cmd1 = "git -C " ~ directoryName ~ " checkout " ~ branchName;
-				debug cmd1.writeln();
-				auto result = executeShell(cmd1);
-				debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
-			}
+			auto cmd1 = "git -C " ~ directoryName ~ " checkout " ~ branchName;
+			debug cmd1.writeln();
+			auto result = executeShell(cmd1);
+			debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
 
 			auto cmd1 = "git -C " ~ directoryName ~ " pull";
 			cmd1.writeln();
