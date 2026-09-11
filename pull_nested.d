@@ -65,9 +65,9 @@ int main(string[] args) {
 			auto result = executeShell(cmd1);
 			debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
 
-			auto cmd1 = "git -C " ~ directoryName ~ " pull";
+			cmd1 = "git -C " ~ directoryName ~ " pull";
 			cmd1.writeln();
-			auto result = executeShell(cmd1);
+			result = executeShell(cmd1);
 			result.output.write();
 			continue;
 		} else {

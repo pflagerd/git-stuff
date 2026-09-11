@@ -20,6 +20,7 @@ private int addRepoToDesktop(string workingDirectoryNameOrRepoUrl) {
 
 private int addRepoToDesktopFromWorkingDirectoryName(string directoryName) {
     directoryName = directoryName.buildNormalizedPath(); // normalize the directory name
+    writeln(typeof(directoryName).stringof);
 
     try {
         if (!directoryName.isDir)
