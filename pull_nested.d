@@ -13,7 +13,7 @@ static const auto gitrepos = ".gitrepos";
 
 int main(string[] args) {
     if (!gitrepos.exists) {
-		stderr.writeln(gitrepos ~ " does not exist in the current working directory. Is your current working directory set to a desktop directory?");
+		stderr.writeln(gitrepos ~ " does not exist in the current working directory. Cannot pull.");
 		return 1;
 	}
 
