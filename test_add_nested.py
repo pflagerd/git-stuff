@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from shutil import rmtree
 import subprocess
@@ -61,10 +62,14 @@ def cleanup():
 
 
 def test_aiA1xIZ():
-    a = Path("a")
-    if a.is_dir():
-        print("\"a/\" already exists. removing it.")
-        rmtree(str(a))
+    if os.path.exists("tmp"):
+        rmtree("tmp")
+
+    os.mkdir("tmp")
+
+    cwd = os.getcwd()
+
+    os.chdir("tmp")
 
     result = subprocess.run(
         ["git", "clone", "git@github.com:pflagerd/a.git"],
@@ -75,7 +80,14 @@ def test_aiA1xIZ():
     if result.returncode != 0:
         print(f"Unable to clone git@github.com:pflagerd/a.git to a/: %d (%s)", result.returncode, result.stderr)
 
-    print("return code:", result.returncode)
+    # print("return code:", result.returncode)
+    if not os.path.exists("a"):
+        print("Something went wrong creating tmp/a")
+        return 1
+
+
+
+    return 0
 
 
 if __name__ == "__main__":
