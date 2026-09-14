@@ -1,1 +1,29 @@
 add_nested should assume the branch is the default branch UNLESS the directoryName differs from the gitlab url name
+
+
+TEST
+
+add-nested directoryName | URI
+
+a. add-nested directoryName
+b. add-nested URI
+
+i. directoryName/ exists
+ii. directoryName/ not exists
+
+A. directoryName/ is directory
+B. directoryName is not directory
+
+1. directoryName/.git/ exists
+2. directoryName/.git/ not exists
+
+x. remote origin exists
+y. remote origin not exists
+
+I default branch is master
+II default branch is not master
+
+X default branch is same as rightmost part of directoryName/
+Y default branch is same as rightmost part of URI (of which rightmost part is directory name)
+Z default branch is not same as either rightmost part of directoryName/ or rightmost part of URI (of which rightmost part is directory name)
+
