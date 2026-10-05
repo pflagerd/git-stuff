@@ -160,7 +160,10 @@ private bool isRepoURI(string possibleRepoURI) {
     return possibleRepoURI.indexOf(':') != -1;
 }
 
-int main(string[] args) {    
+int main(string[] args) {
+    stderr.writeln("STDERR TEST");
+    writeln("STDOUT TEST");
+
     if (args.length == 1) {
         stderr.writeln("add-nested repo-directory ... ");
         stderr.writeln("  adds the repo-directory to .gitrepos and .gitignore");
