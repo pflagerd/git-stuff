@@ -9,6 +9,8 @@ import std.stdio;
 import std.string;
 import std.utf;
 
+import gitCloneDirectoryName : gitCloneDirectoryName;
+
 static const auto gitrepos = ".gitrepos";
 
 int main(string[] args) {
@@ -29,16 +31,16 @@ int main(string[] args) {
 	    debug writeln("if directory has a leading /, remove it: " ~ directoryName);
 		if (directoryName.startsWith("/"))
 			directoryName = directoryName[1..$];
+	    debug writeln("if directory has a trailing /, remove it: " ~ directoryName);
+		if (directoryName.endsWith("/"))
+			directoryName = directoryName[0..$-1];
 
 		writeln("directoryName == \"" ~ directoryName ~ "\"");
 		writeln(typeof(directoryName).stringof);
 		auto gitUrl = splitLine[1];
 		writeln("gitUrl == \"" ~ gitUrl ~ "\"");
-		auto branchName = directoryName;
-		if (branchName[$ - branchName.strideBack(branchName.length)] == '/')
-			branchName = directoryName[0 .. $ - branchName.strideBack(branchName.length)];
-		if (splitLine.length == 3)
-			branchName = splitLine[2];
+		auto gitDirectoryName = gitUrl.gitCloneDirectoryName;
+		writeln("gitDirectoryName == \"" ~ gitDirectoryName ~ "\"");
 
 		writefln("exists(%s) = %s, isDir would throw if false", directoryName, std.file.exists(directoryName));
 		if (std.file.exists(directoryName)) {
@@ -60,14 +62,16 @@ int main(string[] args) {
 				continue;
 			}
 
-			auto cmd1 = "git -C " ~ directoryName ~ " checkout " ~ branchName;
-			debug cmd1.writeln();
-			auto result = executeShell(cmd1);
-			debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
+			if (splitLine.length == 3 || directoryName != gitDirectoryName) {
+				auto cmd1 = "git -C " ~ directoryName ~ " checkout " ~ (splitLine.length == 3 ? splitLine[2] : directoryName);
+				debug cmd1.writeln();
+				auto result = executeShell(cmd1);
+				debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
+			}
 
-			cmd1 = "git -C " ~ directoryName ~ " pull";
+			auto cmd1 = "git -C " ~ directoryName ~ " pull";
 			cmd1.writeln();
-			result = executeShell(cmd1);
+			auto result = executeShell(cmd1);
 			result.output.write();
 			continue;
 		} else {
@@ -76,10 +80,12 @@ int main(string[] args) {
 			auto result = executeShell(cmd3);
 			result.output.writeln();
 
-			auto cmd4 = "git -C " ~ directoryName ~ " checkout " ~ branchName;
-			writeln(cmd4);
-			result = executeShell(cmd4);
-			result.output.writeln();
+			if (splitLine.length == 3 || directoryName != gitDirectoryName) {
+				auto cmd4 = "git -C " ~ directoryName ~ " checkout " ~ (splitLine.length == 3 ? splitLine[2] : directoryName);
+				writeln(cmd4);
+				result = executeShell(cmd4);
+				result.output.writeln();
+			}
 		}
 	}
 

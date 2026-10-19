@@ -38,9 +38,9 @@ private int addNestedRepoFromDirectoryName(string directoryName) {
         return 1;
     }
 
-    debug writeln("if directoryName has a leading /, remove it");
-    if (directoryName.startsWith("/"))
-        directoryName = directoryName[1 .. $];
+    debug writeln("if directoryName has no leading /, add one");
+    if (!directoryName.startsWith("/"))
+        directoryName = "/" ~ directoryName;
 	debug writeln("directoryName = " ~ directoryName);
 
     debug writeln("if directoryName has no trailing /, add it");

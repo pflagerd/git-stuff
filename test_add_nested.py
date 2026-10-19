@@ -61,7 +61,7 @@ def cleanup():
         rmtree(str(a))
 
 
-def test_aiA1xIZ():
+def test_aiA1xIZgl():
     if os.path.exists("tmp"):
         rmtree("tmp")
 
@@ -85,10 +85,17 @@ def test_aiA1xIZ():
         print("Something went wrong creating tmp/a")
         return 1
 
+    if os.path.exists(".gitignore"):
+        print(".gitignore should not exist for this test case.")
+        return 2
+
+    if os.path.exists(".gitrepos"):
+        print(".gitrepos should not exist for this test case.")
+        return 3
 
 
     return 0
 
 
 if __name__ == "__main__":
-    test_aiA1xIZ()
+    test_aiA1xIZgl()
