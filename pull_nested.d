@@ -13,6 +13,24 @@ import gitCloneDirectoryName : gitCloneDirectoryName;
 
 static const auto gitrepos = ".gitrepos";
 
+bool hasBranchNamed(string lines, string branch) {
+	foreach (line; lines.lineSplitter()) {
+		debug writeln(line);
+		line = line[2..$];
+		debug writeln(line);
+		if (line.startsWith("remotes/origin/")) {
+			line = line[15..$];
+			debug writeln(line);
+			if (line == branch)
+				return true;
+		} else {
+			if (line == branch)
+				return true;
+		}
+	}
+	return false;
+}
+
 int main(string[] args) {
     if (!gitrepos.exists) {
 		stderr.writeln(gitrepos ~ " does not exist in the current working directory. Cannot pull.");
@@ -63,10 +81,23 @@ int main(string[] args) {
 			}
 
 			if (splitLine.length == 3 || directoryName != gitDirectoryName) {
-				auto cmd1 = "git -C " ~ directoryName ~ " checkout " ~ (splitLine.length == 3 ? splitLine[2] : directoryName);
+				auto cmd1 = "git -C " ~ directoryName ~ " branch -a";
 				debug cmd1.writeln();
 				auto result = executeShell(cmd1);
 				debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
+				debug writeln(typeof(result.output).stringof);
+
+				if (result.output.hasBranchNamed(directoryName) || (splitLine.length == 3 && result.output.hasBranchNamed(splitLine[2]))) {
+					cmd1 = "git -C " ~ directoryName ~ " checkout " ~ (splitLine.length == 3 ? splitLine[2] : directoryName);
+					debug cmd1.writeln();
+					result = executeShell(cmd1);
+					debug writeln("result.status = " ~ result.status.to!string ~ ", result.output = " ~ result.output);
+				} else {
+					if (splitLine.length == 3)
+						stderr.writeln("Unable to find a branch named " ~ splitLine[2]);
+					else
+						stderr.writeln("Unable to find a branch named " ~ directoryName);
+				}
 			}
 
 			auto cmd1 = "git -C " ~ directoryName ~ " pull";
