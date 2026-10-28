@@ -162,19 +162,19 @@ then do the `add-nested` and `pull-nested` work on those structures.
   name and then runs `git -C /<directory>/`, which looks in the filesystem
   root, so `add-nested alpha` fails with `cannot change to '/alpha/'`. It also
   writes the entry to `.gitignore` before failing, with a doubled slash
-  (`//alpha/`).
+  (`//alpha/`). ([#8](https://github.com/pflagerd/git-stuff/issues/8))
 - **`add-nested` only handles its first argument.** An unconditional `break`
   in `main()`'s loop stops after one argument, even though the usage text
-  says it accepts several.
+  says it accepts several. ([#9](https://github.com/pflagerd/git-stuff/issues/9))
 - **`add-nested` doesn't save updated `.gitrepos` entries.** When an entry
   already exists and its branch has changed, the updated line is never
-  written back to the file.
+  written back to the file. ([#10](https://github.com/pflagerd/git-stuff/issues/10))
 - **`find_and_remove_desktop_directories_not_in_%2Egitrepos.py` doesn't
   really check `.gitrepos`.** It saves only the first character of each line
   and compares those against `Path` objects, so no directory ever counts as
   listed. Apart from the y/N prompt, the only safeguard against deleting a
   directory that *is* listed is the separate git work-tree and
   `git check-ignore` test in `git_ignored()`, and what that test decides
-  depends on the directory you run it from.
+  depends on the directory you run it from. ([#11](https://github.com/pflagerd/git-stuff/issues/11))
 - **`bin/commit-and-push` has no `#!` line**, so it runs under whatever shell
-  calls it.
+  calls it. ([#12](https://github.com/pflagerd/git-stuff/issues/12))
