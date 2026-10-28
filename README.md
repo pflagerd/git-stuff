@@ -4,6 +4,8 @@ We want nested git repositories which are cloned to, checked out from, pulled
 from, and pushed to their own remotes when the parent repository is cloned,
 checked out, pulled and pushed.
 
+These utilities are for Linux only.
+
 Git's own answer to this is
 [submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules), which pin
 each nested repo to a specific commit. This project takes a lighter approach:

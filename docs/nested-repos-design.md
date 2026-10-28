@@ -16,8 +16,12 @@ breaks relative paths), [#5](https://github.com/pflagerd/git-stuff/issues/5)
 
 ## Overview
 
-Three classes, each in its own `.d` file, each a top-level module (no package),
-following the precedent of `gitCloneDirectoryName.d`:
+Three classes, each in its own `.d` file, each a top-level module (not inside
+any package), following the precedent of `gitCloneDirectoryName.d`. File and
+module names are camelCase like that precedent. The D style guide prefers
+all-lowercase module names to avoid trouble on case-insensitive file systems
+([D style](https://dlang.org/dstyle.html)), but these utilities are for Linux
+only, where file systems are case-sensitive.
 
 | Class | File | Represents |
 |---|---|---|
@@ -239,11 +243,6 @@ changing callers.
 
 ## Open questions
 
-- Confirm that "a global module" means top-level modules with no package,
-  as recorded above.
-- File naming: `gitIgnore.d` etc. follows `gitCloneDirectoryName.d`; the D
-  style guide prefers all-lowercase module names
-  ([D style](https://dlang.org/dstyle.html)).
 - The other disk checks (TBD).
 - How `add-nested` and `pull-nested` are rewritten on top of
   `ParentDirectory`, and whether `pull-nested` runs `check()` first.
