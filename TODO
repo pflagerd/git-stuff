@@ -1,0 +1,15 @@
+Read .gitignore into a data structure.
+Check .gitignore for syntax and sort order, and rewrite it if a command line option exists to do that.
+
+Read .gitrepos into a data structure
+Check .gitrepos for syntax and sort order, and agreement with .gitignore, and rewrite one, the other, or both if there's an issue.
+
+Then do the add-nested or pull-nested logic and update the data structures and write them out.
+
+
+
+.gitignore.serialize()
+.gitignore.deserialize()
+
+.gitrepos.serialize()
+.gitrepos.deserialize()

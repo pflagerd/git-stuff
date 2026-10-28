@@ -179,6 +179,7 @@ int main(string[] args) {
     for (int i = 1; i < args.length; i++) {
         if (addNestedRepo(args[i]))
             result = 1; // If any of the individual addNestedRepo() calls fails, the result will be be a failure.
+            break;
     }
     
     return result;
