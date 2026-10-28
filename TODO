@@ -1,15 +1,13 @@
-Read .gitignore into a data structure.
-Check .gitignore for syntax and sort order, and rewrite it if a command line option exists to do that.
+The design for this work is in docs/nested-repos-design.md.
 
-Read .gitrepos into a data structure
-Check .gitrepos for syntax and sort order, and agreement with .gitignore, and rewrite one, the other, or both if there's an issue.
+Add a "setup" Makefile target that ensures required packages (including the D compiler) are installed.
 
-Then do the add-nested or pull-nested logic and update the data structures and write them out.
+GitIgnore (gitIgnore.d): read .gitignore into a data structure in the constructor; write() writes it back.
+Check .gitignore's managed block for syntax and sort order, and rewrite it if --fix is given.
 
+GitRepos (gitRepos.d): read .gitrepos into a data structure in the constructor; write() writes it back.
+Check .gitrepos for syntax and sort order.
 
+ParentDirectory (parentDirectory.d): check agreement between .gitignore and .gitrepos, and with the disk, and rewrite one, the other, or both if --fix is given.
 
-.gitignore.serialize()
-.gitignore.deserialize()
-
-.gitrepos.serialize()
-.gitrepos.deserialize()
+Then do the add-nested or pull-nested logic on top of ParentDirectory and write the files out.
