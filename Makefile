@@ -22,3 +22,4 @@ bin/pull-nested: pull_nested.d debugio.d gitCloneDirectoryName.d
 	$(DC) -wi -gf -unittest -debug pull_nested.d debugio.d gitCloneDirectoryName.d -of=bin/pull-nested
 
 test:
+	$(DC) -wi -unittest -main -run gitIgnore.d
