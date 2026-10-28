@@ -49,6 +49,25 @@ format is described in the comments at the top of the file.
 
 ## The D tools
 
+### Setup
+
+```bash
+make setup
+```
+
+This runs `./setup.sh`, which installs whichever of these Ubuntu packages are
+missing: `ldc` (the D compiler), `make`, `git`, `python3` and
+`python3-pytest`. It uses `apt-get` (via `sudo` unless run as root), and apt
+asks before installing anything. Run it again at any time; it installs only
+what's missing.
+
+On a machine without `make`, run `./setup.sh` directly.
+
+It supports only Ubuntu and its derivatives, recognised from `ID` or
+`ID_LIKE` in [`/etc/os-release`](https://www.freedesktop.org/software/systemd/man/latest/os-release.html).
+On anything else (Fedora, Arch, Debian, ...) it warns, installs nothing, and
+exits non-zero.
+
 ### Building
 
 ```bash
@@ -56,17 +75,17 @@ make
 ```
 
 This builds `bin/add-nested` and `bin/pull-nested` with debug output and
-unit tests compiled in. `make clean` removes them.
+unit tests compiled in. `make clean` removes them. `bin/.gitignore` keeps the
+built programs out of git.
 
-The `Makefile` calls `dmd`, the reference D compiler. Ubuntu doesn't package
-`dmd`; it is available from [dlang.org](https://dlang.org/download.html).
-The open-source LLVM-based compiler [LDC](https://github.com/ldc-developers/ldc)
-is packaged (`sudo apt install ldc`) and its `ldmd2` wrapper accepts the same
-flags, so you can build the same way with it:
+The compiler is set by the `DC` variable, which defaults to `ldmd2`: the
+wrapper of the open-source LLVM-based compiler
+[LDC](https://github.com/ldc-developers/ldc) that accepts the flags of `dmd`,
+the reference D compiler. To build with `dmd` instead (not packaged by
+Ubuntu; available from [dlang.org](https://dlang.org/download.html)):
 
 ```bash
-ldmd2 -wi -gf -unittest -debug add_nested.d debugio.d -of=bin/add-nested
-ldmd2 -wi -gf -unittest -debug pull_nested.d debugio.d gitCloneDirectoryName.d -of=bin/pull-nested
+make DC=dmd
 ```
 
 ### `add-nested <directory | url> ...`

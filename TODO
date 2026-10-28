@@ -1,7 +1,5 @@
 The design for this work is in docs/nested-repos-design.md.
 
-Add a "setup" Makefile target that ensures required packages (including the D compiler) are installed.
-
 GitIgnore (gitIgnore.d): read .gitignore into a data structure in the constructor; write() writes it back.
 Check .gitignore's managed block for syntax and sort order, and rewrite it if --fix is given.
 

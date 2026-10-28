@@ -42,8 +42,9 @@ Teaching them what you're doing comes first. Speed comes second.
   cloned, checked out, pulled and pushed along with their parent. `TODO`
   holds the planned work. Read both at the start of a session.
 - The repo has three kinds of code:
-  - D programs (`*.d`) built with `make` (`dmd`) into `bin/add-nested`
-    and `bin/pull-nested`.
+  - D programs (`*.d`) built with `make` (LDC's `ldmd2` by default, via
+    the `DC` variable) into `bin/add-nested` and `bin/pull-nested`.
+    `make setup` (`setup.sh`) installs the required packages.
   - Bash helpers in `bin/`, alongside some committed prebuilt binaries
     (e.g. `bin/pull-desktop-repos`, `bin/template`).
   - Python scripts at the top level.
