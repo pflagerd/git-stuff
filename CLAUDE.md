@@ -33,6 +33,10 @@ Teaching them what you're doing comes first. Speed comes second.
 - If something you said earlier turns out to be wrong, say so plainly and
   explain the corrected understanding.
 
+### Writing conventions
+- In docs, design notes and code comments, refer to a generic user,
+  developer or programmer as she/her.
+
 ### Project facts: `README.md` and `TODO`
 - `README.md` states the project's goal: nested git repositories that are
   cloned, checked out, pulled and pushed along with their parent. `TODO`
