@@ -6,5 +6,3 @@ their files; Finding (finding.d) and textFile.d support them.
 ParentDirectory (parentDirectory.d): check agreement between .gitignore and .gitrepos, and with the disk, and rewrite one, the other, or both if --fix is given.
 
 Then do the add-nested or pull-nested logic on top of ParentDirectory and write the files out.
-
-Makefile's bin/pull-nested and bin/add-nested targets both depend upon the compiler having been installed and made available by the setup target.  Both those targets therefore have a dependency upon the compiler which Makefile's setup target could resolve (and track).

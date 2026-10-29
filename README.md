@@ -63,6 +63,12 @@ what's missing.
 
 On a machine without `make`, run `./setup.sh` directly.
 
+You rarely need to run it by hand: `make`, `make all` and `make test` treat
+the compiler as a prerequisite, so if it's missing they run `./setup.sh`
+first. Targets that don't compile, such as `make clean`, never do. If you
+build with another compiler (`make DC=dmd`) that isn't installed, `make`
+stops with a message, since `setup.sh` only installs LDC.
+
 It supports only Ubuntu and its derivatives, recognised from `ID` or
 `ID_LIKE` in [`/etc/os-release`](https://www.freedesktop.org/software/systemd/man/latest/os-release.html).
 On anything else (Fedora, Arch, Debian, ...) it warns, installs nothing, and
