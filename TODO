@@ -1,9 +1,10 @@
 Where we left off (resume here): steps 1-6 below are done, and branch
 gitignore-serialization was fast-forward merged into master, which closed
 #2 #3 #5 #8 #9 #10; #6 was closed by hand (checkDisk covers it). Next:
+- The README was reviewed end to end (#13, closed when this reaches master).
 - The remaining work is tracked as GitHub issues, listed in README.md under
-  "Planned work" and "Known issues": #13 (review the README) first, then #1 #4
-  #7, the Python issues #14-#18 and #11, and #12.
+  "Planned work" and "Known issues": #19 (push-nested), #1 #4 #7, the Python
+  issues #14-#18 and #11, and #12.
 
 The design for this work is in docs/nested-repos-design.md.
 
@@ -19,7 +20,7 @@ Next: the commands in docs/nested-commands-proposal.md (all its decisions are ma
 4. add-nested <directory>... - done; it replaces the old bin/add-nested, and add_nested.d and test_add_nested.py are deleted.
 5. pull-nested - done; it replaces the old bin/pull-nested, and pull_nested.d is deleted.
 6. add-nested --clone - done.
-7. Clean-up: merged to master (done); review the README end to end (#13).
+7. Clean-up: merged to master, README reviewed (#13) - done.
 
 Replacing the Python scripts with D, or deleting them, is tracked as GitHub issues
 #14 #15 #16 #17 #11, then #18 (remove python3 from setup.sh); see README.md, "Planned work".

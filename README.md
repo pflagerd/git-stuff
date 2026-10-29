@@ -4,14 +4,43 @@ We want nested git repositories which are cloned to, checked out from, pulled
 from, and pushed to their own remotes when the parent repository is cloned,
 checked out, pulled and pushed.
 
+Today the tools register nested repos (`add-nested`), clone the missing ones
+and fast-forward the rest (`pull-nested`), check that everything agrees
+(`check-nested`) and unregister them (`remove-nested`). Pushing is planned
+([#19](https://github.com/pflagerd/git-stuff/issues/19)). Switching branches
+across nested repos is deliberately not done: `pull-nested` never changes the
+branch of a repo that already exists, since she may be working in it.
+
 These utilities are for Linux only.
 
 Git's own answer to this is
 [submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules), which pin
 each nested repo to a specific commit. This project takes a lighter approach:
-the parent repo ignores each nested repo in `.gitignore` and lists it, with its
-remote URL and branch, in a plain-text `.gitrepos` file. The tools here read
-and write those two files.
+the parent ignores each nested repo in `.gitignore` and lists it, with its
+remote URL and branch, in a plain-text `.gitrepos` file. The tools read and
+write those two files.
+
+## Typical use
+
+```bash
+make
+bin/add-nested -C ~/Desktop --clone git@github.com:pflagerd/alpha.git
+bin/add-nested -C ~/Desktop beta
+bin/pull-nested -C ~/Desktop
+bin/check-nested -C ~/Desktop --fix
+```
+
+1. `make` builds the four commands into `bin/`, installing the D compiler
+   first if it's missing (see [Setup and building](#setup-and-building)).
+2. `add-nested --clone <url>` clones a repo into the parent directory given
+   with `-C` (here `~/Desktop`) and registers it.
+3. `add-nested beta` registers a clone that's already there, `~/Desktop/beta`.
+4. `pull-nested` clones whatever `.gitrepos` lists that's missing (say, on
+   another machine) and fast-forwards the rest.
+5. `check-nested --fix` repairs what it can in `.gitignore` and `.gitrepos`
+   and reports anything else.
+
+Without `-C`, each command works in the current directory.
 
 ## Files the tools use
 
@@ -76,7 +105,7 @@ sorted and unique; the block is removed when it becomes empty.
 `.forks` records which other repositories were forked from this one. Its
 format is described in the comments at the top of the file.
 
-## The D tools
+## Setup and building
 
 ### Setup
 
@@ -88,15 +117,14 @@ This runs `./setup.sh`, which installs whichever of these Ubuntu packages are
 missing: `ldc` (the D compiler), `make`, `git` and `python3` (for the
 remaining Python scripts, until
 [#18](https://github.com/pflagerd/git-stuff/issues/18)). It uses `apt-get`
-(via `sudo` unless run as root), and apt asks before installing anything. Run it again at any time; it installs only
-what's missing.
+(via `sudo` unless run as root), and apt asks before installing anything. It
+can be run again at any time; it installs only what's missing. On a machine
+without `make`, she runs `./setup.sh` directly.
 
-On a machine without `make`, run `./setup.sh` directly.
-
-You rarely need to run it by hand: `make`, `make all` and `make test` treat
+She rarely needs to run it by hand: `make`, `make all` and `make test` treat
 the compiler as a prerequisite, so if it's missing they run `./setup.sh`
-first. Targets that don't compile, such as `make clean`, never do. If you
-build with another compiler (`make DC=dmd`) that isn't installed, `make`
+first. Targets that don't compile, such as `make clean`, never do. If she
+builds with another compiler (`make DC=dmd`) that isn't installed, `make`
 stops with a message, since `setup.sh` only installs LDC.
 
 It supports only Ubuntu and its derivatives, recognised from `ID` or
@@ -114,9 +142,8 @@ This builds `bin/add-nested`, `bin/pull-nested`, `bin/check-nested` and
 `bin/remove-nested` with debug output compiled in. Every one is linked with
 `debugio.d`, which in these `-debug` builds makes standard output
 unbuffered, so output appears line by line when stepping through a program
-in Kate's debugger. Unit tests are not compiled into them; `make test`
-runs those. `make clean` removes them. `bin/.gitignore` keeps the
-built programs out of git.
+in Kate's debugger. Unit tests are not compiled into them; `make test` runs
+those. `make clean` removes them, and `bin/.gitignore` keeps them out of git.
 
 The compiler is set by the `DC` variable, which defaults to `ldmd2`: the
 wrapper of the open-source LLVM-based compiler
@@ -128,40 +155,35 @@ Ubuntu; available from [dlang.org](https://dlang.org/download.html)):
 make DC=dmd
 ```
 
-### `check-nested [-C <directory>] [--fix]`
+## The commands
 
-Reports problems with a parent directory's `.gitignore` and `.gitrepos`, and
-with the nested repos they list, as `warning:` lines on standard error. It
-never uses the network. It prints nothing when there's nothing to report.
+### What all four share
 
-- `-C <directory>`: check that parent directory instead of the current one.
-- `--fix`: first repair what can be repaired (sort, de-duplicate, move nested
-  repo lines into the managed block, add missing block entries), write both
-  files, and print `fixed N problem(s)`.
+| Option | Meaning |
+|---|---|
+| `-C <directory>` | Work in that parent directory instead of the current one (like `git -C`). |
+| `--fix` | First repair what can be repaired in `.gitignore` and `.gitrepos` (sort, de-duplicate, move nested-repo lines into the managed block, add missing block entries), and write both files. |
+| `-h`, `--help` | Print usage. |
 
-Exit status: 0 no problems, 1 problems remain, 2 bad usage or a file that
-can't be read. Source: `checkNested.d`, on top of the classes described in
-`docs/nested-repos-design.md`.
+| Exit status | Meaning |
+|---|---|
+| 0 | Did its job, and no problems remain. |
+| 1 | Did what it could, but problems remain or something failed for some repo or argument. |
+| 2 | Couldn't start: bad usage, or `.gitignore`/`.gitrepos` couldn't be read; nothing was changed. |
 
-### `remove-nested [-C <directory>] [--fix] <nested directory>...`
+Problems are printed as `warning:` lines on standard error, marked
+`(fixable with --fix)` where that applies. Nested directories are given
+relative to the parent directory, in any slash form (`alpha`, `/alpha/`,
+`tools/alpha`); `.` and `..` aren't allowed. Afterwards, each command
+reports any problems left in the two files, as `check-nested` would. Git
+always runs with an argument list, never through a shell, so names with
+spaces are safe.
 
-Removes each nested directory (in any slash form: `alpha`, `/alpha/`, ...)
-from `.gitrepos` and from the managed block of `.gitignore`, printing
-`removed /alpha/ from ...` for each. **It never deletes a directory**; if one
-is still on disk, the message says so. A directory in neither file gets a
-warning, and the others are still removed. The files are only rewritten if
-something changed. Afterwards, any remaining problems with the two files are
-reported as with `check-nested`.
+### `add-nested [--branch <name>] [--url <url>] <nested directory>...`
 
-Exit status: 0 done, 1 something wasn't registered or problems remain, 2 bad
-usage or a file that can't be read. Source: `removeNested.d`.
-
-### `add-nested [-C <directory>] [--fix] [--branch <name>] [--url <url>] <nested directory>...`
-
-Registers each nested directory, an existing clone given relative to the
-parent directory (`alpha`, `/alpha/`, `tools/alpha`; no `.` or `..`), in
-`.gitrepos` and in the managed block of `.gitignore`, printing
-`added /alpha/ <url> [<branch>]` for each.
+Registers each nested directory, an existing clone, in `.gitrepos` and in the
+managed block of `.gitignore`, printing `added /alpha/ <url> [<branch>]` for
+each.
 
 - **Every argument is checked first; if any fails, nothing is written.**
   Each must be the top level of its own git repository and have a url and a
@@ -169,36 +191,28 @@ parent directory (`alpha`, `/alpha/`, `tools/alpha`; no `.` or `..`), in
 - **url:** the stored `remote.origin.url`, or `--url`.
 - **branch:** the current branch, or `--branch` (needed for a detached
   HEAD). The current branch is left out of `.gitrepos` only when
-  `pull-nested` would arrive at it by itself from a fresh clone (see
-  decision 3 in `docs/nested-commands-proposal.md`); `--branch` is always
-  recorded.
+  `pull-nested` would arrive at it by itself from a fresh clone (decision 3
+  in `docs/nested-commands-proposal.md`); `--branch` is always recorded.
 - `--branch` and `--url` need exactly one nested directory.
-- Afterwards, remaining problems with the two files are reported as with
-  `check-nested`.
 
-`add-nested [-C <directory>] [--fix] [--branch <name>] --clone <url> [<nested directory>]`
-clones `<url>` first, into the nested directory given or else the one
-`git clone` would choose, then registers it as above. Everything that can be
-checked without the network is checked first (both files, the directory
-rules, and that the directory doesn't exist yet), so a mistake costs no
-download. The clone gets the branch `pull-nested` would give it: `--branch`,
-else a branch named after the directory if the remote has one, else the
-default. If the clone succeeds but the branch can't be checked out, the clone
-is kept, unregistered, and the message says how to register it.
+**`add-nested [--branch <name>] --clone <url> [<nested directory>]`** clones
+`<url>` first, into the nested directory given or else the one `git clone`
+would choose, then registers it as above. Everything that can be checked
+without the network is checked first (both files, the directory rules, and
+that the directory doesn't exist yet), so a mistake costs no download. The
+clone gets the branch `pull-nested` would give it: `--branch`, else a branch
+named after the directory if the remote has one, else the default. If the
+clone succeeds but the branch can't be checked out, the clone is kept,
+unregistered, and the message says how to register it.
 
-Exit status: 0 done, 1 an argument failed or problems remain, 2 bad usage or
-a file that can't be read. Source: `addNested.d`.
-
-### `pull-nested [-C <directory>] [--fix]`
+### `pull-nested`
 
 For each nested repo in `.gitrepos`, under a `== /alpha/` header, with git's
 own messages shown as they happen:
 
-- **Missing:** `git clone <url> <directory>`, then checks out the listed
-  branch. With no branch listed, if the directory's name differs from the
-  name `git clone` would choose, it checks out a branch named after the
-  directory if the remote has one, and otherwise stays on the remote's
-  default branch, saying so.
+- **Missing:** `git clone <url> <directory>`, then the branch as described
+  for `.gitrepos`; when the directory-name rule finds no such branch, it says
+  it's staying on the default.
 - **Exists but isn't a nested repo:** a warning; skipped.
 - **Exists:** `git pull --ff-only`, which only ever moves the branch forward;
   if the branch has diverged it refuses and leaves the repo as it was,
@@ -206,19 +220,31 @@ own messages shown as they happen:
   existing repo: if she's on a different branch from the one `.gitrepos`
   means, it warns and pulls the branch she's on.
 
-A failure in one repo doesn't stop the others. Problems with `.gitignore` and
-`.gitrepos` are reported first but don't stop the pull; `--fix` repairs them
-first. Exit status: 0 done, 1 a repo failed or problems remain, 2 bad usage or
-a file that can't be read. Git runs with its terminal, so ssh can still ask
-for a passphrase.
+A failure in one repo doesn't stop the others. Problems with the two files
+are reported first but don't stop the pull. Git runs with her terminal, so
+ssh can still ask for a passphrase.
 
-Source: `pullNested.d`.
+### `check-nested`
+
+Reports problems with `.gitignore` and `.gitrepos`, and with the nested
+repos they list on disk (missing, not a repository, no remote with the
+listed url). It never uses the network, and prints nothing when there's
+nothing to report. With `--fix` it repairs what it can, writes both files,
+and prints `fixed N problem(s)`.
+
+### `remove-nested <nested directory>...`
+
+Removes each nested directory from `.gitrepos` and from the managed block of
+`.gitignore`, printing `removed /alpha/ from ...` for each. **It never
+deletes a directory**; if one is still on disk, the message says so. A
+directory in neither file gets a warning, and the others are still removed.
+The files are only rewritten if something changed.
 
 ## Bash helpers in `bin/`
 
 These are short wrappers around git. Some call each other (for example,
-`add-commit-push` calls `commit-and-push`, which calls `push`), so `bin/` needs
-to be on your `PATH`.
+`add-commit-push` calls `commit-and-push`, which calls `push`), so `bin/`
+needs to be on her `PATH`.
 
 | Script | What it does |
 |---|---|
@@ -240,12 +266,12 @@ repository.
 ## Python scripts
 
 These are being replaced by D or deleted; each links to the issue that
-decides its fate.
-
-All need Python 3 and git, and use only the standard library.
+decides its fate. All need Python 3 and git, and use only the standard
+library.
 
 These take paths as arguments (defaulting to `.`) and accept `-v` for verbose
-output. Each exits 0 if any path matched and 1 otherwise.
+output. Each exits 0 if any path matched and 1 otherwise
+([#17](https://github.com/pflagerd/git-stuff/issues/17) for all three):
 
 - **`is_pflager_net_in_git_origin.py [paths]`** prints the paths whose
   `origin` host ends in `.pflager.net`.
@@ -254,22 +280,41 @@ output. Each exits 0 if any path matched and 1 otherwise.
 - **`add_origin_host_remote.py [paths]`** adds a second remote, named after
   the `origin` host, wherever one doesn't already exist.
 
-These three: [#17](https://github.com/pflagerd/git-stuff/issues/17).
-
 The rest read `../.gitrepos` or `../.gitignore`, so they expect to be run from
-a directory one level below the parent repo:
+a directory one level below the parent directory:
 
 - **`look_for_missing_remotes.py`** prints each `.gitrepos` entry whose remote
-  can't be reached (`git ls-remote` fails). [#14](https://github.com/pflagerd/git-stuff/issues/14)
+  can't be reached (`git ls-remote` fails).
+  [#14](https://github.com/pflagerd/git-stuff/issues/14)
 - **`find_desktop_directories_not_in_%2Egitrepos.py`** prints the directories
-  in `..` that `.gitrepos` doesn't list. [#15](https://github.com/pflagerd/git-stuff/issues/15)
+  in `..` that `.gitrepos` doesn't list.
+  [#15](https://github.com/pflagerd/git-stuff/issues/15)
 - **`find_directories_in_%2Egitignore_not_on_disk.py`** prints the
-  `.gitignore` entries that have no matching directory in `..`. [#16](https://github.com/pflagerd/git-stuff/issues/16)
+  `.gitignore` entries that have no matching directory in `..`.
+  [#16](https://github.com/pflagerd/git-stuff/issues/16)
 - **`find_and_remove_desktop_directories_not_in_%2Egitrepos.py`** offers to
   delete (with a y/N prompt for each) the directories in `..` that aren't
-  listed in `.gitrepos`. **Read the known issues before running it.** [#11](https://github.com/pflagerd/git-stuff/issues/11)
+  listed in `.gitrepos`. **Read the known issues before running it.**
+  [#11](https://github.com/pflagerd/git-stuff/issues/11)
 
 `%2E` in the file names is the URL encoding of `.`.
+
+## Source files
+
+The D code, with its designs in `docs/nested-repos-design.md` (the classes)
+and `docs/nested-commands-proposal.md` (the commands):
+
+| File | What it holds |
+|---|---|
+| `addNested.d`, `pullNested.d`, `checkNested.d`, `removeNested.d` | The four commands. Each does its work in a `run()` function; `main()` only calls it. |
+| `nestedCommand.d` | What the commands share: exit statuses, option parsing, printing findings, the branch rules, cloning, and a few git queries. |
+| `parentDirectory.d` | `ParentDirectory`: both files of a parent directory together (add, remove, check, fix, write), and the checks on disk. |
+| `gitIgnore.d` | `GitIgnore`: one `.gitignore`, split around the managed block. |
+| `gitRepos.d` | `GitRepos`: one `.gitrepos`, and its escaping. |
+| `finding.d` | `Finding`: one problem reported by a check. |
+| `textFile.d` | Reading files and writing them atomically (temporary file, then rename). |
+| `gitCloneDirectoryName.d` | The directory name `git clone` would choose for a url, a port of `git_url_basename()` in git's [`dir.c`](https://github.com/git/git/blob/master/dir.c). |
+| `debugio.d` | Linked into every program; see [Building](#building). |
 
 ## Tests
 
@@ -277,52 +322,38 @@ a directory one level below the parent repo:
 make test
 ```
 
-This compiles and runs the D `unittest` blocks in these modules (designs in
-`docs/nested-repos-design.md` and `docs/nested-commands-proposal.md`):
-
-- `gitIgnore.d`: the `GitIgnore` class, which reads, checks and writes a
-  `.gitignore`.
-- `gitRepos.d`: the `GitRepos` class, which reads, checks, adds to, removes
-  from and writes a `.gitrepos`.
-- `parentDirectory.d`: the `ParentDirectory` class, which reads, writes, adds
-  to, removes from, checks and fixes both files of a directory together, and
-  checks the nested repos on disk.
-- `addNested.d`, `checkNested.d`, `pullNested.d` and `removeNested.d`: the
-  four commands, tested in-process through
-  their `run()` functions against local repositories (no network or SSH
-  key needed).
-- `nestedCommand.d`: what the commands share: exit statuses, option parsing,
-  printing findings, the branch rules and a few git queries.
-- `finding.d`: the `Finding` struct that checks return.
-- `textFile.d`: the shared reading and atomic writing.
-- `gitCloneDirectoryName.d`: the directory name `git clone` would choose for
-  a url, a port of `git_url_basename()` in git's
-  [`dir.c`](https://github.com/git/git/blob/master/dir.c); `add-nested` and
-  `pull-nested` use it. (No tests of its own.)
-- `debugio.d`: linked into every program; see Building.
-
-After the unit tests, `make test` builds each command (the `COMMANDS`
-list in the `Makefile`) and checks that `--help` exits 0 and an unknown
-option exits 2, which covers the one-line `main()` the in-process tests
-leave out.
+This compiles and runs the D `unittest` blocks in all the files above (not
+`gitCloneDirectoryName.d` or `debugio.d`, which have none). The commands are
+tested in-process, by calling their `run()` functions against local
+repositories in a temporary directory, so no network or SSH key is needed.
+Then `make test` builds each command (the `COMMANDS` list in the `Makefile`)
+and checks that `--help` exits 0 and an unknown option exits 2, which covers
+the one-line `main()` the in-process tests leave out.
 
 ## Planned work
 
 Tracked as GitHub issues:
 
-- [#13](https://github.com/pflagerd/git-stuff/issues/13) Review this README end to end.
-- [#7](https://github.com/pflagerd/git-stuff/issues/7) Check that the directories named by `.gitignore` lines outside the
-  managed block still exist.
-- [#1](https://github.com/pflagerd/git-stuff/issues/1) Let `add-commit-push` and `commit-and-push` take `-m` to override
-  the default `progress` message.
-- [#4](https://github.com/pflagerd/git-stuff/issues/4) A utility to create remote repositories (one or several) on the owner's
-  servers, instead of by hand over ssh.
-- Replace the Python scripts with D, or delete them: [#14](https://github.com/pflagerd/git-stuff/issues/14), [#15](https://github.com/pflagerd/git-stuff/issues/15),
-  [#16](https://github.com/pflagerd/git-stuff/issues/16), [#17](https://github.com/pflagerd/git-stuff/issues/17) and [#11](https://github.com/pflagerd/git-stuff/issues/11); then [#18](https://github.com/pflagerd/git-stuff/issues/18) removes `python3` from
-  `setup.sh`.
+- [#19](https://github.com/pflagerd/git-stuff/issues/19) `push-nested`: push
+  each nested repo to its own remote.
+- [#7](https://github.com/pflagerd/git-stuff/issues/7) Check that the
+  directories named by `.gitignore` lines outside the managed block still
+  exist.
+- [#1](https://github.com/pflagerd/git-stuff/issues/1) Let `add-commit-push`
+  and `commit-and-push` take `-m` to override the default `progress` message.
+- [#4](https://github.com/pflagerd/git-stuff/issues/4) A utility to create
+  remote repositories (one or several) on the owner's servers, instead of by
+  hand over ssh.
+- Replace the Python scripts with D, or delete them:
+  [#14](https://github.com/pflagerd/git-stuff/issues/14),
+  [#15](https://github.com/pflagerd/git-stuff/issues/15),
+  [#16](https://github.com/pflagerd/git-stuff/issues/16),
+  [#17](https://github.com/pflagerd/git-stuff/issues/17) and
+  [#11](https://github.com/pflagerd/git-stuff/issues/11); then
+  [#18](https://github.com/pflagerd/git-stuff/issues/18) removes `python3`
+  from `setup.sh`.
 
-Bugs are listed under [Known issues](#known-issues). The designs are in
-`docs/nested-repos-design.md` and `docs/nested-commands-proposal.md`.
+Bugs are listed under [Known issues](#known-issues).
 
 ## Known issues
 
@@ -332,6 +363,7 @@ Bugs are listed under [Known issues](#known-issues). The designs are in
   listed. Apart from the y/N prompt, the only safeguard against deleting a
   directory that *is* listed is the separate git work-tree and
   `git check-ignore` test in `git_ignored()`, and what that test decides
-  depends on the directory you run it from. ([#11](https://github.com/pflagerd/git-stuff/issues/11))
+  depends on the directory she runs it from.
+  ([#11](https://github.com/pflagerd/git-stuff/issues/11))
 - **`bin/commit-and-push` has no `#!` line**, so it runs under whatever shell
   calls it. ([#12](https://github.com/pflagerd/git-stuff/issues/12))
