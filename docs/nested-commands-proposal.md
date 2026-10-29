@@ -83,9 +83,14 @@ For each directory:
    The branch is **left out** of `.gitrepos` only when `pull-nested` would
    arrive at the same branch by itself, so the two tools can't disagree:
    - If the directory's last component differs from the name `git clone`
-     would choose for the url (`gitCloneDirectoryName.d`), `pull-nested`
-     would check out a branch named after the directory: leave it out only
-     if the current branch has that name.
+     would choose for the url (`gitCloneDirectoryName.d`), a fresh clone
+     would check out a branch named after the directory if the remote has
+     one, and otherwise stay on the default. Leave the branch out only if
+     the current branch has the directory's name and
+     `refs/remotes/origin/<that name>` exists locally. When she is on the
+     default branch, record it: if the remote later gained a branch named
+     after the directory, a line without a branch would quietly change
+     meaning.
    - Otherwise `pull-nested` would get the remote's default branch: leave it
      out only if the current branch equals it, read locally from
      `refs/remotes/origin/HEAD` (`git symbolic-ref --short
@@ -126,16 +131,22 @@ says so, so she isn't left wondering.
    - **Missing:** `git clone <url> <dir>`, then check out the branch: the
      listed one, or else, if the directory's name differs from the name
      `git clone` would choose (`gitCloneDirectoryName.d`), a branch named
-     after the directory. [#2](https://github.com/pflagerd/git-stuff/issues/2)'s
+     after the directory **if the remote has one**
+     (`git rev-parse --verify --quiet refs/remotes/origin/<name>`, which a
+     fresh clone answers without another network call). If it doesn't, the
+     clone stays on the remote's default branch, with a note saying so
+     (decision 6 part 3). [#2](https://github.com/pflagerd/git-stuff/issues/2)'s
      example (`blog/ git@github.com:pflagerd/blog-bootstrap bok-blog`) becomes
      an acceptance test: it must create `blog/` on branch `bok-blog`.
    - **Exists but fails the `checkDisk()` test:** warning, skipped.
-   - **Exists and is a nested repo:** `git -C <dir> pull --ff-only`.
+   - **Exists and is a nested repo:** `git -C <dir> pull --ff-only`
+     (decision 6 part 1). If the branch can't be fast-forwarded, git's
+     message is shown and the repo is left untouched.
 3. A git failure for one repo doesn't stop the others; exit 1 at the end.
 
 Two behaviour changes from today, both recommendations:
 
-- **`--ff-only`** (still open). What plain `git pull` does when her branch
+- **`--ff-only`** (decided, 6 part 1). What plain `git pull` does when her branch
   and the remote's have diverged depends on her own `pull.*` settings
   ([git-pull](https://git-scm.com/docs/git-pull)). Observed with git 2.43:
   with none set it refuses (`Need to specify how to reconcile divergent
@@ -203,8 +214,10 @@ directory-name rule it records nothing for `blog/` cloned from
    switch but stop if it fails? (3) keep or drop the directory-name rule (no
    branch listed and the directory name differs from the clone name means a
    branch named after the directory)?
-**Answer:** Part 2: (i), never switch in an existing repo. Parts 1 and 3:
-still open.
+**Answer:** Part 1: yes, `--ff-only`. Part 2: (i), never switch in an
+existing repo. Part 3: keep the directory-name rule, but if the remote has
+no branch named after the directory, stay on the remote's default branch
+(with a note) instead of failing. Decision 3's rule is adjusted to match.
 7. **End-to-end tests in pytest** (recommended), or another way?
 **Answer:** In D, not pytest: each command tested in-process through its
 `run()` (option B), plus a quick check per built program. Python in this
