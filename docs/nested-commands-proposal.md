@@ -1,6 +1,6 @@
 # Nested repos: command-line tools (proposal)
 
-Status: **proposal, awaiting decisions.** Branch: `gitignore-serialization`.
+Status: **all decisions made; not implemented yet.** Branch: `gitignore-serialization`.
 Builds on `docs/nested-repos-design.md` (`GitIgnore`, `GitRepos`,
 `ParentDirectory`). Recommendations are marked; numbered **decisions** at the
 end are hers to make before any code is written.
