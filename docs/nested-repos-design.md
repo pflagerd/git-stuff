@@ -116,6 +116,19 @@ used. Only `nested` is ever sorted.
 - **Permissions:** an existing file's permission bits are copied to the
   replacement before the rename.
 
+### Round trip
+
+Reading a `.gitignore` and writing it back reproduces it byte for byte,
+including CRLF lines, a missing final newline, blank lines, comments and
+escapes, provided any block is already sorted, has no blank lines, is not
+empty, and ends with `\n` if it is the last thing in the file. Otherwise the
+design changes the file on purpose: the block is sorted, blank lines in it
+are dropped, an empty block is removed, and a final newline is added after
+a block at the end. `gitIgnore.d`'s unit tests check both lists.
+
+The file must be valid UTF-8: D's `readText` rejects anything else, so such
+a file fails to load rather than being rewritten.
+
 ## `GitRepos`
 
 ### File format

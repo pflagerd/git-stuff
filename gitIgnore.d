@@ -519,3 +519,74 @@ unittest
     g.write();
     assert((g.path.getAttributes & octal!7777) == octal!600);
 }
+
+// --- round trip ----------------------------------------------------------
+
+/// Reading then writing reproduces these files byte for byte: any block is
+/// already sorted and non-empty, and ends the file with '\n' if it is last.
+unittest
+{
+    import std.file : read, write;
+
+    immutable directory = testDirectory("round-trip");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    enum b = beginMarker, e = endMarker;
+    immutable string[] files = [
+        "",                                           // empty file
+        "*.o\ntmp/\n",                                // no block
+        "*.o\ntmp/",                                  // no final newline
+        "*.o\r\ntmp/\r\n",                            // CRLF
+        "\n\n# comment\n\n",                          // only blank lines and a comment
+        "*.log\n!keep.log\n",                         // negation order kept
+        "*.o\n" ~ b ~ "\n/alpha/\n/beta/\n" ~ e ~ "\n",                 // block last
+        b ~ "\n/alpha/\n" ~ e ~ "\n",                                   // only a block
+        "# top\n\n" ~ b ~ "\n/alpha/\n" ~ e ~ "\n\n# bottom\ntmp/\n",   // block in the middle
+        "*.o\r\n" ~ b ~ "\n/alpha/\n" ~ e ~ "\ntmp/\r\n",               // CRLF around a block
+        b ~ "\n/alpha/\n" ~ e ~ "\ntmp/",                               // after, no final newline
+        "  spaced  \n\\#escaped\n\\!escaped\n",       // leading/trailing spaces, escapes
+    ];
+
+    foreach (i, original; files)
+    {
+        immutable file = buildPath(directory, ".gitignore");
+        file.write(original);
+        auto g = new GitIgnore(file);
+        assert(g.content == original, "content() differs for case " ~ i.to!string);
+
+        g.write();
+        assert(cast(string) file.read == original, "write() differs for case " ~ i.to!string);
+    }
+}
+
+/// Where the design deliberately changes a file on the way through.
+unittest
+{
+    import std.file : write;
+
+    immutable directory = testDirectory("round-trip-changes");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    enum b = beginMarker, e = endMarker;
+    string through(string text)
+    {
+        immutable file = buildPath(directory, ".gitignore");
+        file.write(text);
+        return new GitIgnore(file).content;
+    }
+
+    // An unsorted block comes back sorted.
+    assert(through(b ~ "\n/beta/\n/alpha/\n" ~ e ~ "\n") == b ~ "\n/alpha/\n/beta/\n" ~ e ~ "\n");
+    // Blank lines inside the block are dropped.
+    assert(through(b ~ "\n/alpha/\n\n/beta/\n" ~ e ~ "\n") == b ~ "\n/alpha/\n/beta/\n" ~ e ~ "\n");
+    // An empty block is removed.
+    assert(through("*.o\n" ~ b ~ "\n" ~ e ~ "\ntmp/\n") == "*.o\ntmp/\n");
+    // A block at the very end gains a final newline.
+    assert(through("*.o\n" ~ b ~ "\n/alpha/\n" ~ e) == "*.o\n" ~ b ~ "\n/alpha/\n" ~ e ~ "\n");
+}
