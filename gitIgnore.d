@@ -66,6 +66,66 @@ class GitIgnore
     }
 
     /**
+     * The file text write() would produce: `before`, then the managed block
+     * with `nested` sorted, then `after`, joined with '\n'.
+     *
+     * The block is left out when `nested` is empty, so removing the last
+     * nested repo removes the block. When the block is the last thing in the
+     * file, the file ends with '\n' (the END line is ours); otherwise the
+     * original file's final newline, or lack of one, is kept.
+     */
+    string content() const @safe pure
+    {
+        import std.algorithm.sorting : sort;
+        import std.array : join;
+
+        string[] lines = before.dup;
+        if (nested.length)
+            lines ~= beginMarker ~ nested.dup.sort.release ~ endMarker;
+        lines ~= after;
+
+        if (lines.length == 0)
+            return "";
+        immutable blockIsLast = nested.length && after.length == 0;
+        return lines.join("\n") ~ (endsWithNewline || blockIsLast ? "\n" : "");
+    }
+
+    /**
+     * Writes content() to `toPath`, or by default to the path it was read
+     * from.
+     *
+     * The text goes to a temporary file in the same directory, which is then
+     * renamed over the target, so an interrupted write never leaves her a
+     * truncated .gitignore: POSIX rename() replaces the target in one step
+     * (https://pubs.opengroup.org/onlinepubs/9799919799/functions/rename.html).
+     * An existing target's permission bits are kept. A file that doesn't
+     * exist and would be empty is not created.
+     */
+    void write(string toPath = null) const
+    {
+        import std.conv : octal;
+        import std.file : getAttributes, remove, rename, setAttributes;
+        import std.file : writeFile = write;
+        import std.path : baseName, buildPath, dirName;
+        import std.process : thisProcessID;
+
+        immutable target = toPath is null ? path : toPath;
+        immutable text = content();
+        if (text.length == 0 && !target.exists)
+            return;
+
+        // Hidden, and in the same directory so rename() stays on one file system.
+        immutable temporary = buildPath(target.dirName,
+            "." ~ target.baseName ~ ".tmp." ~ thisProcessID.to!string);
+        scope (failure) if (temporary.exists) temporary.remove;
+
+        writeFile(temporary, text);
+        if (target.exists)
+            temporary.setAttributes(target.getAttributes & octal!7777);
+        rename(temporary, target);
+    }
+
+    /**
      * Splits file text into lines on '\n' only, as git does; a '\r' stays
      * part of its line, so it is written back unchanged.
      *
@@ -256,31 +316,168 @@ unittest
     assert(e && e.msg.canFind("line 3") && e.msg.canFind("second managed block"));
 }
 
+// --- test helpers --------------------------------------------------------
+
+version (unittest)
+{
+    import std.file : mkdirRecurse, rmdirRecurse, tempDir;
+    import std.path : buildPath;
+    import std.process : thisProcessID;
+
+    /// A fresh, empty directory for one test; remove it with rmdirRecurse.
+    private string testDirectory(string name)
+    {
+        immutable directory = buildPath(tempDir,
+            "gitIgnore-test-" ~ thisProcessID.to!string ~ "-" ~ name);
+        if (directory.exists)
+            directory.rmdirRecurse;
+        directory.mkdirRecurse;
+        return directory;
+    }
+
+    /// A GitIgnore read from a file holding `text`.
+    private GitIgnore fromText(string directory, string text)
+    {
+        import std.file : write;
+
+        immutable file = buildPath(directory, ".gitignore");
+        file.write(text);
+        return new GitIgnore(file);
+    }
+}
+
 // --- constructor ---------------------------------------------------------
 
 /// Reads a real file; a missing file reads as empty.
 unittest
 {
-    import std.file : remove, tempDir, write;
-    import std.path : buildPath;
-    import std.process : thisProcessID;
+    immutable directory = testDirectory("constructor");
+    scope (exit) directory.rmdirRecurse;
 
-    immutable file = buildPath(tempDir, "gitIgnore-test-" ~ thisProcessID.to!string);
-    scope (exit) if (file.exists) file.remove;
-
+    immutable file = buildPath(directory, ".gitignore");
     auto missing = new GitIgnore(file);
     assert(missing.path == file);
     assert(missing.before.length == 0 && missing.nested.length == 0
         && missing.after.length == 0);
     assert(missing.endsWithNewline);
 
-    file.write("*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\ntmp/\n");
-    auto g = new GitIgnore(file);
+    auto g = fromText(directory,
+        "*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\ntmp/\n");
     assert(g.before == ["*.o"]);
     assert(g.nested == ["/alpha/"]);
     assert(g.after == ["tmp/"]);
     assert(g.endsWithNewline);
 
-    file.write("*.o\ntmp/");
-    assert(!new GitIgnore(file).endsWithNewline);
+    assert(!fromText(directory, "*.o\ntmp/").endsWithNewline);
+}
+
+// --- content() -----------------------------------------------------------
+
+/// The block is written sorted, between before and after.
+unittest
+{
+    immutable directory = testDirectory("content-sorted");
+    scope (exit) directory.rmdirRecurse;
+
+    auto g = fromText(directory,
+        "*.o\n" ~ beginMarker ~ "\n/beta/\n/alpha/\n" ~ endMarker ~ "\ntmp/\n");
+    assert(g.content ==
+        "*.o\n" ~ beginMarker ~ "\n/alpha/\n/beta/\n" ~ endMarker ~ "\ntmp/\n");
+    assert(g.nested == ["/beta/", "/alpha/"]); // content() is const: no sorting in place
+}
+
+/// Adding to a file with no block appends the block, ending with '\n' even
+/// when the original had no final newline.
+unittest
+{
+    immutable directory = testDirectory("content-add");
+    scope (exit) directory.rmdirRecurse;
+
+    auto g = fromText(directory, "*.o\ntmp/");
+    g.nested ~= "/gamma/";
+    assert(g.content == "*.o\ntmp/\n" ~ beginMarker ~ "\n/gamma/\n" ~ endMarker ~ "\n");
+}
+
+/// With lines after the block, the original final newline (or none) is kept.
+unittest
+{
+    immutable directory = testDirectory("content-newline");
+    scope (exit) directory.rmdirRecurse;
+
+    auto g = fromText(directory, beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\ntmp/");
+    assert(g.content == beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\ntmp/");
+}
+
+/// An empty block is left out; nothing at all gives "".
+unittest
+{
+    immutable directory = testDirectory("content-empty");
+    scope (exit) directory.rmdirRecurse;
+
+    auto g = fromText(directory, "*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n");
+    g.nested = [];
+    assert(g.content == "*.o\n");
+
+    assert(fromText(directory, "").content == "");
+}
+
+// --- write() -------------------------------------------------------------
+
+/// Writes back to the path it was read from, leaving no temporary file.
+unittest
+{
+    import std.algorithm.searching : count;
+    import std.file : dirEntries, readText, SpanMode;
+
+    immutable directory = testDirectory("write-default");
+    scope (exit) directory.rmdirRecurse;
+
+    auto g = fromText(directory, "*.o\n");
+    g.nested ~= "/alpha/";
+    g.write();
+    assert(g.path.readText == "*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n");
+    assert(dirEntries(directory, SpanMode.shallow).count == 1); // just .gitignore
+}
+
+/// An explicit path is written instead; the original is untouched.
+unittest
+{
+    import std.file : readText;
+
+    immutable directory = testDirectory("write-explicit");
+    scope (exit) directory.rmdirRecurse;
+
+    auto g = fromText(directory, "*.o\n");
+    g.nested ~= "/alpha/";
+    immutable other = buildPath(directory, "other");
+    g.write(other);
+    assert(other.readText == g.content);
+    assert(g.path.readText == "*.o\n");
+}
+
+/// A missing file that would be empty is not created.
+unittest
+{
+    immutable directory = testDirectory("write-nothing");
+    scope (exit) directory.rmdirRecurse;
+
+    auto g = new GitIgnore(buildPath(directory, ".gitignore"));
+    g.write();
+    assert(!g.path.exists);
+}
+
+/// An existing file's permission bits survive the rename.
+unittest
+{
+    import std.conv : octal;
+    import std.file : getAttributes, setAttributes;
+
+    immutable directory = testDirectory("write-mode");
+    scope (exit) directory.rmdirRecurse;
+
+    auto g = fromText(directory, "*.o\n");
+    g.path.setAttributes(octal!600);
+    g.nested ~= "/alpha/";
+    g.write();
+    assert((g.path.getAttributes & octal!7777) == octal!600);
 }

@@ -173,7 +173,7 @@ make test
 
 This compiles and runs the D `unittest` blocks in `gitIgnore.d`, where the
 `GitIgnore` class from `docs/nested-repos-design.md` is being built. So far it
-only parses a `.gitignore`; nothing uses it yet.
+reads and writes a `.gitignore`; nothing uses it yet.
 
 `test_add_nested.py` lists the planned test cases for `add-nested` in comments.
 One case is written so far, and it clones `git@github.com:pflagerd/a.git`, so

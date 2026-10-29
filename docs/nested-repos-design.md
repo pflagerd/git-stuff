@@ -104,10 +104,17 @@ used. Only `nested` is ever sorted.
   empty, and the first write adds the block at the end.
 - **Malformed block** (BEGIN without END, END without BEGIN, two blocks):
   refuse with a clear error. Guessing could rewrite her `.gitignore` wrongly.
-- **Nothing to write:** `write()` does not create a new file that would hold
-  only an empty block.
+- **Nothing to write:** `write()` does not create a new file that would be
+  empty.
 - **Written as:** `before`, BEGIN marker, `nested` (sorted), END marker,
-  `after`.
+  `after`, joined with `\n`. `content()` returns that text without writing it.
+- **Empty block:** left out when `nested` is empty, so removing the last
+  nested repo removes the block.
+- **Final newline:** when the block is the last thing in the file, the file
+  ends with `\n` (the END line is the tool's). Otherwise the original final
+  newline, or lack of one, is kept.
+- **Permissions:** an existing file's permission bits are copied to the
+  replacement before the rename.
 
 ## `GitRepos`
 
