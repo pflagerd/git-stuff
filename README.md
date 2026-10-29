@@ -15,20 +15,35 @@ and write those two files.
 
 ## Files the tools use
 
-These live in the **parent** repository, not in this one.
+These live in the **parent directory**, the one that holds the nested repos,
+not in this repository. The parent directory doesn't have to be a git
+repository itself (a Desktop folder of clones works); `.gitignore` is kept up
+to date either way, ready for a `git init`.
 
 ### `.gitrepos`
 
-One line per nested repository, sorted, with fields separated by spaces:
+One line per nested repository, sorted by directory, with fields separated
+by spaces:
 
 ```
 <directory> <remote-url> [<branch>]
 ```
 
-- `<directory>` is relative to the parent repo, written with a leading and
-  trailing `/` (e.g. `/alpha/`).
-- `<remote-url>` is what `git clone` is given.
-- `<branch>` is optional. Leave it out for `master` or `main`.
+- `<directory>` is relative to the parent directory, written with a leading
+  and trailing `/` (e.g. `/alpha/`, `/tools/beta/`). Any slash form is
+  accepted when reading (`alpha`, `/alpha`, `alpha/`), but a doubled slash is
+  an error.
+- `<remote-url>` is what `git clone` is given, e.g. `git@github.com:u/a.git`.
+- `<branch>` is optional. With it, a fresh clone is checked out on that
+  branch. Without it, a fresh clone gets a branch named after the directory
+  if the directory's name differs from the name `git clone` would choose and
+  the remote has such a branch, and otherwise the remote's default branch.
+  `add-nested` leaves the branch out only when that would give the branch
+  the clone is on.
+- `%`, space, tab and newline in a field are written as `%25`, `%20`, `%09`
+  and `%0A` (e.g. `/My%20Repo/`); nothing else is escaped.
+- Blank lines and lines starting with `#` are skipped when reading, and not
+  written back: the tools own this whole file.
 
 Example:
 
@@ -39,8 +54,22 @@ Example:
 
 ### `.gitignore`
 
-Each nested directory is also listed in the parent's `.gitignore` (e.g.
-`/alpha/`), so the parent repo doesn't track the nested repo's files.
+Each nested directory is also listed in the parent's `.gitignore`, so the
+parent repository doesn't track the nested repo's files. The tools keep those
+entries in one managed block and never change anything outside it, so her own
+lines, comments and their order are left alone:
+
+```
+*.o
+# BEGIN nested repos (managed by add-nested)
+/alpha/
+/beta/
+# END nested repos
+tmp/
+```
+
+The marker lines must be exactly as shown. Inside the block, entries are kept
+sorted and unique; the block is removed when it becomes empty.
 
 ### `.forks`
 
@@ -57,8 +86,9 @@ make setup
 
 This runs `./setup.sh`, which installs whichever of these Ubuntu packages are
 missing: `ldc` (the D compiler), `make`, `git` and `python3` (for the
-remaining Python scripts, until [#18](https://github.com/pflagerd/git-stuff/issues/18)). It uses `apt-get` (via `sudo` unless run as root), and apt
-asks before installing anything. Run it again at any time; it installs only
+remaining Python scripts, until
+[#18](https://github.com/pflagerd/git-stuff/issues/18)). It uses `apt-get`
+(via `sudo` unless run as root), and apt asks before installing anything. Run it again at any time; it installs only
 what's missing.
 
 On a machine without `make`, run `./setup.sh` directly.
@@ -182,10 +212,7 @@ first. Exit status: 0 done, 1 a repo failed or problems remain, 2 bad usage or
 a file that can't be read. Git runs with its terminal, so ssh can still ask
 for a passphrase.
 
-`gitCloneDirectoryName.d` works out the name `git clone` would choose. It is
-a port of `git_url_basename()` in git's
-[`dir.c`](https://github.com/git/git/blob/master/dir.c). Source:
-`pullNested.d`.
+Source: `pullNested.d`.
 
 ## Bash helpers in `bin/`
 
@@ -250,8 +277,8 @@ a directory one level below the parent repo:
 make test
 ```
 
-This compiles and runs the D `unittest` blocks in the modules being built
-from `docs/nested-repos-design.md`:
+This compiles and runs the D `unittest` blocks in these modules (designs in
+`docs/nested-repos-design.md` and `docs/nested-commands-proposal.md`):
 
 - `gitIgnore.d`: the `GitIgnore` class, which reads, checks and writes a
   `.gitignore`.
@@ -268,8 +295,13 @@ from `docs/nested-repos-design.md`:
   printing findings, the branch rules and a few git queries.
 - `finding.d`: the `Finding` struct that checks return.
 - `textFile.d`: the shared reading and atomic writing.
+- `gitCloneDirectoryName.d`: the directory name `git clone` would choose for
+  a url, a port of `git_url_basename()` in git's
+  [`dir.c`](https://github.com/git/git/blob/master/dir.c); `add-nested` and
+  `pull-nested` use it. (No tests of its own.)
+- `debugio.d`: linked into every program; see Building.
 
-After the unit tests, `make test` builds each new command (the `COMMANDS`
+After the unit tests, `make test` builds each command (the `COMMANDS`
 list in the `Makefile`) and checks that `--help` exits 0 and an unknown
 option exits 2, which covers the one-line `main()` the in-process tests
 leave out.
