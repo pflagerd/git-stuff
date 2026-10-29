@@ -16,7 +16,8 @@ module gitRepos;
 
 import std.conv : to;
 
-import textFile : readIfExists, splitFileLines;
+import finding : Finding;
+import textFile : readIfExists, splitFileLines, writeAtomically;
 
 /// One line of .gitrepos.
 struct GitReposEntry
@@ -91,43 +92,182 @@ class GitRepos
                     ~ fields.length.to!string ~ " field(s)");
             }
 
-            import std.algorithm.searching : canFind;
-
-            immutable directory = unescapeField(fields[0]);
-            if (directory.canFind("//"))
+            auto entry = GitReposEntry(unescapeField(fields[0]), unescapeField(fields[1]),
+                fields.length == 3 ? unescapeField(fields[2]) : "");
+            immutable problem = validate(entry);
+            if (problem !is null)
             {
-                throw new GitReposException("line " ~ lineNumber.to!string
-                    ~ ": too many slashes in directory '" ~ directory ~ "'");
-            }
-
-            GitReposEntry entry;
-            entry.directory = normalizeDirectory(directory);
-            if (entry.directory.length == 0)
-            {
-                throw new GitReposException("line " ~ lineNumber.to!string
-                    ~ ": empty directory");
-            }
-            entry.url = unescapeField(fields[1]);
-            if (!urlSlashesOk(entry.url))
-            {
-                throw new GitReposException("line " ~ lineNumber.to!string
-                    ~ ": too many slashes in url '" ~ entry.url ~ "'");
-            }
-
-            if (fields.length == 3)
-            {
-                entry.branch = unescapeField(fields[2]);
-                // git-check-ref-format: no multiple consecutive slashes.
-                if (entry.branch.canFind("//"))
-                {
-                    throw new GitReposException("line " ~ lineNumber.to!string
-                        ~ ": too many slashes in branch '" ~ entry.branch ~ "'");
-                }
+                throw new GitReposException("line " ~ lineNumber.to!string ~ ": " ~ problem);
             }
             entries ~= entry;
         }
 
         return entries;
+    }
+
+    /**
+     * Normalizes `entry.directory` to "/alpha/" form and checks the entry
+     * against the rules both parse() and add() enforce. Returns a message
+     * describing the first problem, or null if there is none.
+     */
+    static string validate(ref GitReposEntry entry) @safe pure
+    {
+        import std.algorithm.searching : canFind;
+
+        if (entry.directory.canFind("//"))
+        {
+            return "too many slashes in directory '" ~ entry.directory ~ "'";
+        }
+        entry.directory = normalizeDirectory(entry.directory);
+        if (entry.directory.length == 0)
+        {
+            return "empty directory";
+        }
+        if (entry.url.length == 0)
+        {
+            return "empty url";
+        }
+        if (!urlSlashesOk(entry.url))
+        {
+            return "too many slashes in url '" ~ entry.url ~ "'";
+        }
+        // git-check-ref-format: no multiple consecutive slashes.
+        if (entry.branch.canFind("//"))
+        {
+            return "too many slashes in branch '" ~ entry.branch ~ "'";
+        }
+        return null;
+    }
+
+    /**
+     * Adds `entry`, replacing every existing entry with the same directory.
+     * The directory is normalized first, so add("alpha", ...) and
+     * add("/alpha/", ...) mean the same.
+     *
+     * Throws: GitReposException if the entry breaks the rules parse()
+     * enforces (see validate), so write() never produces a file that
+     * won't parse.
+     */
+    void add(GitReposEntry entry) @safe
+    {
+        import std.algorithm.iteration : filter;
+        import std.array : array;
+
+        immutable problem = validate(entry);
+        if (problem !is null)
+        {
+            throw new GitReposException("add(): " ~ problem);
+        }
+        entries = entries.filter!(e => e.directory != entry.directory).array ~ entry;
+    }
+
+    /**
+     * Removes every entry for `directory` (normalized first, so "alpha"
+     * works). Never touches the directory on disk.
+     *
+     * Returns: true if anything was removed.
+     */
+    bool remove(string directory) @safe
+    {
+        import std.algorithm.iteration : filter;
+        import std.array : array;
+
+        immutable target = normalizeDirectory(directory);
+        immutable before = entries.length;
+        entries = entries.filter!(e => e.directory != target).array;
+        return entries.length != before;
+    }
+
+    /**
+     * Problems with the entries. Nothing is changed.
+     *
+     * - Entries are not sorted by directory (fixable: write() sorts them).
+     * - A directory is listed more than once (not fixable: which url or
+     *   branch is right is her call). One finding per directory, saying how
+     *   many times it is listed.
+     *
+     * Findings come in a fixed order: "not sorted" first, then duplicates in
+     * the order their directories first appear. Everything else that could
+     * be wrong with a line is already refused by parse().
+     */
+    Finding[] check() const @safe pure
+    {
+        import std.algorithm.sorting : isSorted;
+
+        Finding[] findings;
+
+        if (!entries.isSorted!((a, b) => a.directory < b.directory))
+        {
+            findings ~= Finding("", path ~ ": entries are not sorted by directory", true);
+        }
+
+        size_t[string] count;
+        string[] order; // directories in order of first appearance
+        foreach (e; entries)
+        {
+            if (e.directory !in count)
+            {
+                order ~= e.directory;
+            }
+            ++count[e.directory];
+        }
+        foreach (directory; order)
+        {
+            if (count[directory] > 1)
+            {
+                findings ~= Finding(directory, path ~ ": " ~ directory ~ " is listed "
+                    ~ count[directory].to!string ~ " times", false);
+            }
+        }
+
+        return findings;
+    }
+
+    /**
+     * The file text write() would produce: one line per entry, sorted by
+     * directory (a stable sort, so duplicates keep their order for check()),
+     * fields escaped and separated by single spaces, the branch left out
+     * when empty, and a final newline. No entries gives "".
+     */
+    string content() const @safe pure
+    {
+        import std.algorithm.mutation : SwapStrategy;
+        import std.algorithm.sorting : sort;
+
+        auto sorted = entries.dup;
+        sorted.sort!((a, b) => a.directory < b.directory, SwapStrategy.stable);
+
+        string text;
+        foreach (e; sorted)
+        {
+            text ~= escapeField(e.directory) ~ " " ~ escapeField(e.url);
+            if (e.branch.length)
+            {
+                text ~= " " ~ escapeField(e.branch);
+            }
+            text ~= "\n";
+        }
+        return text;
+    }
+
+    /**
+     * Writes content() to `toPath`, or by default to the path it was read
+     * from, using textFile.writeAtomically (temporary file, then rename;
+     * permissions kept). A file that doesn't exist and would be empty is not
+     * created; an existing file whose entries were all removed is written
+     * empty, not deleted.
+     */
+    void write(string toPath = null) const
+    {
+        import std.file : exists;
+
+        immutable target = toPath is null ? path : toPath;
+        immutable text = content();
+        if (text.length == 0 && !target.exists)
+        {
+            return;
+        }
+        writeAtomically(target, text);
     }
 
     /**
@@ -431,4 +571,337 @@ unittest
         GitReposEntry("/alpha/", "git@github.com:pflagerd/alpha.git", ""),
         GitReposEntry("/beta/", "b.git", "dev"),
     ]);
+}
+
+// --- test helpers ----------------------------------------------------------
+
+version (unittest)
+{
+    import std.file : rmdirRecurse;
+    import std.path : buildPath;
+    import textFile : testDirectory;
+
+    /// A GitRepos read from a file holding `text`.
+    private GitRepos fromText(string directory, string text)
+    {
+        import std.file : write;
+
+        immutable file = buildPath(directory, ".gitrepos");
+        file.write(text);
+        return new GitRepos(file);
+    }
+}
+
+// --- add() / remove() ------------------------------------------------------
+
+/// add() appends a new entry, normalizing its directory.
+unittest
+{
+    immutable directory = testDirectory("gitRepos-add");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory, "/beta/ b.git\n");
+    g.add(GitReposEntry("alpha", "git@github.com:pflagerd/alpha.git", ""));
+    assert(g.entries == [
+        GitReposEntry("/beta/", "b.git", ""),
+        GitReposEntry("/alpha/", "git@github.com:pflagerd/alpha.git", ""),
+    ]);
+}
+
+/// add() replaces every entry with the same directory, duplicates included.
+unittest
+{
+    immutable directory = testDirectory("gitRepos-add-replace");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory, "/alpha/ old.git\n/beta/ b.git\n/alpha/ older.git dev\n");
+    g.add(GitReposEntry("/alpha", "new.git", "main"));
+    assert(g.entries == [
+        GitReposEntry("/beta/", "b.git", ""),
+        GitReposEntry("/alpha/", "new.git", "main"),
+    ]);
+}
+
+/// add() refuses what parse() would refuse, and leaves entries unchanged.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.exception : collectException;
+
+    immutable directory = testDirectory("gitRepos-add-invalid");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory, "/beta/ b.git\n");
+    foreach (bad; [
+        GitReposEntry("//alpha/", "a.git", ""),
+        GitReposEntry("/", "a.git", ""),
+        GitReposEntry("/alpha/", "", ""),
+        GitReposEntry("/alpha/", "git@github.com:pflagerd//a.git", ""),
+        GitReposEntry("/alpha/", "a.git", "feature//x"),
+    ])
+    {
+        auto x = collectException!GitReposException(g.add(bad));
+        assert(x && x.msg.canFind("add(): "), bad.directory ~ " " ~ bad.url);
+    }
+    assert(g.entries == [GitReposEntry("/beta/", "b.git", "")]);
+}
+
+/// remove() normalizes its argument, removes every match, and reports it.
+unittest
+{
+    immutable directory = testDirectory("gitRepos-remove");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory, "/alpha/ a.git\n/beta/ b.git\n/alpha/ a2.git\n");
+    assert(g.remove("alpha"));
+    assert(g.entries == [GitReposEntry("/beta/", "b.git", "")]);
+    assert(!g.remove("/gamma/"));
+    assert(g.entries.length == 1);
+}
+
+// --- content() / write() ---------------------------------------------------
+
+/// Sorted by directory, escaped, single spaces, branch omitted when empty.
+unittest
+{
+    immutable directory = testDirectory("gitRepos-content");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory, "beta  b.git\tdev\n# comment\n\n/alpha/ a.git\n");
+    g.add(GitReposEntry("My Repo", "/srv/git/my repo.git", ""));
+    assert(g.content ==
+        "/My%20Repo/ /srv/git/my%20repo.git\n"
+        ~ "/alpha/ a.git\n"
+        ~ "/beta/ b.git dev\n");
+}
+
+/// Duplicates are written, in their original order, for check() to report.
+unittest
+{
+    immutable directory = testDirectory("gitRepos-content-duplicates");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory, "/beta/ second.git\n/alpha/ a.git\n/beta/ first.git\n");
+    assert(g.content == "/alpha/ a.git\n/beta/ second.git\n/beta/ first.git\n");
+}
+
+/// No entries gives "".
+unittest
+{
+    immutable directory = testDirectory("gitRepos-content-empty");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    assert(fromText(directory, "# only a comment\n").content == "");
+}
+
+/// Writes back to the path it was read from; an explicit path instead.
+unittest
+{
+    import std.file : readText;
+
+    immutable directory = testDirectory("gitRepos-write");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory, "/alpha/ a.git\n");
+    g.add(GitReposEntry("/beta/", "b.git", ""));
+    immutable other = buildPath(directory, "other");
+    g.write(other);
+    assert(other.readText == "/alpha/ a.git\n/beta/ b.git\n");
+    assert(g.path.readText == "/alpha/ a.git\n");
+
+    g.write();
+    assert(g.path.readText == "/alpha/ a.git\n/beta/ b.git\n");
+    assert(new GitRepos(g.path).entries == g.entries); // reads back the same
+}
+
+/// A missing file isn't created empty; an existing one is emptied, not deleted.
+unittest
+{
+    import std.file : exists, readText;
+
+    immutable directory = testDirectory("gitRepos-write-empty");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto missing = new GitRepos(buildPath(directory, "missing"));
+    missing.write();
+    assert(!missing.path.exists);
+
+    auto g = fromText(directory, "/alpha/ a.git\n");
+    assert(g.remove("/alpha/"));
+    g.write();
+    assert(g.path.exists && g.path.readText == "");
+}
+
+// --- round trip ------------------------------------------------------------
+
+/// Files already in the tool's own format come back byte for byte, through
+/// content() and through write().
+unittest
+{
+    import std.file : read, write;
+
+    immutable directory = testDirectory("gitRepos-round-trip");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    immutable string[] files = [
+        "",                                                              // empty file
+        "/alpha/ git@github.com:pflagerd/alpha.git\n",                   // scp-like (ssh)
+        "/alpha/ git@github.com:pflagerd/alpha.git\n/beta/ git@github.com:pflagerd/beta.git dev\n",
+        "/alpha/ ssh://git@github.com/pflagerd/alpha.git feature/x\n",   // ssh:// and a slash in a branch
+        "/local/ file:///srv/git/local.git\n/other/ /srv/git/other.git\n",
+        "/tools/gamma/ git@github.com:pflagerd/gamma.git\n",             // nested path
+        "/My%20Repo/ /srv/git/my%20repo.git 100%25\n",                   // escapes
+        "/alpha/ first.git\n/alpha/ second.git\n",                       // duplicates, in order
+    ];
+
+    foreach (i, original; files)
+    {
+        immutable file = buildPath(directory, ".gitrepos");
+        file.write(original);
+        auto g = new GitRepos(file);
+        assert(g.content == original, "content() differs for case " ~ i.to!string);
+
+        g.write();
+        assert(cast(string) file.read == original, "write() differs for case " ~ i.to!string);
+    }
+}
+
+/// Where the tool deliberately changes a file on the way through.
+unittest
+{
+    import std.file : write;
+
+    immutable directory = testDirectory("gitRepos-round-trip-changes");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    string through(string text)
+    {
+        immutable file = buildPath(directory, ".gitrepos");
+        file.write(text);
+        return new GitRepos(file).content;
+    }
+
+    // Comments and blank lines are dropped.
+    assert(through("# repos\n\n/alpha/ a.git\n") == "/alpha/ a.git\n");
+    // Runs of whitespace become single spaces.
+    assert(through("/alpha/   a.git\t\tdev\n") == "/alpha/ a.git dev\n");
+    // Every slash form becomes /alpha/.
+    assert(through("alpha a.git\n/beta b.git\ngamma/ c.git\n")
+        == "/alpha/ a.git\n/beta/ b.git\n/gamma/ c.git\n");
+    // Lines are sorted by directory.
+    assert(through("/beta/ b.git\n/alpha/ a.git\n") == "/alpha/ a.git\n/beta/ b.git\n");
+    // A final newline is added.
+    assert(through("/alpha/ a.git") == "/alpha/ a.git\n");
+    // A CRLF line's '\r' is dropped.
+    assert(through("/alpha/ a.git\r\n") == "/alpha/ a.git\n");
+    // Literal '%' that isn't one of the four escapes reads as text, and its
+    // '%' is escaped on writing.
+    assert(through("/foo%2Ebar/ a.git\n") == "/foo%252Ebar/ a.git\n");
+    assert(through("/a/ a.git x%0ay\n") == "/a/ a.git x%250ay\n");
+}
+
+// --- check() ---------------------------------------------------------------
+
+/// Sorted entries with distinct directories have no findings.
+unittest
+{
+    immutable directory = testDirectory("gitRepos-check-clean");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    assert(fromText(directory, "/alpha/ a.git\n/beta/ b.git dev\n").check.length == 0);
+    assert(fromText(directory, "").check.length == 0);
+}
+
+/// Unsorted entries: one fixable, whole-file finding.
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable directory = testDirectory("gitRepos-check-unsorted");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory, "/beta/ b.git\n/alpha/ a.git\n");
+    const findings = g.check;
+    assert(findings.length == 1);
+    assert(findings[0].directory == "" && findings[0].fixable);
+    assert(findings[0].message.canFind(g.path) && findings[0].message.canFind("not sorted"));
+}
+
+/// Duplicates: one unfixable finding per directory, with the count, in
+/// first-appearance order, after "not sorted".
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable directory = testDirectory("gitRepos-check-duplicates");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory,
+        "/gamma/ c.git\n/alpha/ a.git\n/gamma/ c2.git\n/alpha/ a2.git\n/alpha/ a3.git\n");
+    const findings = g.check;
+    assert(findings.length == 3);
+    assert(findings[0].message.canFind("not sorted"));
+    assert(findings[1].directory == "/gamma/" && !findings[1].fixable
+        && findings[1].message.canFind("listed 2 times"));
+    assert(findings[2].directory == "/alpha/" && !findings[2].fixable
+        && findings[2].message.canFind("listed 3 times"));
+    foreach (f; findings)
+    {
+        assert(f.message.canFind(g.path)); // every message names the file
+    }
+}
+
+/// Sorted duplicates still report the duplicate, but not "not sorted".
+unittest
+{
+    immutable directory = testDirectory("gitRepos-check-sorted-duplicates");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    const findings = fromText(directory, "/alpha/ a.git\n/alpha/ b.git\n").check;
+    assert(findings.length == 1 && findings[0].directory == "/alpha/");
 }

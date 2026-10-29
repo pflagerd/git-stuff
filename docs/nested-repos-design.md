@@ -198,12 +198,29 @@ unreadable form.
 | `path` | `immutable`; where it was read from |
 | `entries` | `GitReposEntry` list, kept sorted by `directory` |
 | constructor | Reads and parses `path` (default `.gitrepos`) |
-| `add(entry)` | Adds, or replaces an entry with the same `directory` |
-| `remove(directory)` | Removes the entry |
-| `write(path?)` | `const`; atomic |
+| `add(entry)` | Normalizes the directory, then adds the entry, replacing every entry with the same directory (duplicates included). Throws `GitReposException` for anything `parse()` would refuse, plus an empty url, so `write()` never produces a file that won't parse. |
+| `remove(directory)` | Normalizes its argument (`"alpha"` works), removes every matching entry, returns whether anything was removed. Never touches the directory on disk. |
+| `content()` | The text `write()` would produce: entries sorted by directory (stable, so duplicates keep their order), fields escaped and single-space separated, branch omitted when empty, final newline; `""` for no entries |
+| `write(path?)` | `const`; atomic. A missing file that would be empty is not created; an existing file whose entries were all removed is written empty, not deleted. |
 
 Two entries with the same directory already in a file are not silently
-merged on read; `ParentDirectory.check()` reports them.
+merged on read or write. `check()` reports, without changing anything:
+entries not sorted by directory (fixable: `write()` sorts), and each
+directory listed more than once, with the count (not fixable: which url or
+branch is right is her call). Everything else that could be wrong with a
+line is refused by `parse()`.
+
+### Round trip
+
+A `.gitrepos` already in the tool's own format comes back byte for byte:
+lines sorted by directory, each directory in `/alpha/` form, fields escaped
+as `escapeField` writes them and separated by single spaces, no comments or
+blank lines, and a final newline. Otherwise the tool changes the file on
+purpose: comments and blank lines are dropped, runs of whitespace become
+single spaces, every slash form becomes `/alpha/`, lines are sorted, a final
+newline is added, a CRLF line's `\r` is dropped, and literal `%` text that
+isn't one of the four escapes (e.g. `%2E`) has its `%` escaped
+(`%252E`). `gitRepos.d`'s unit tests check both lists.
 
 ## `ParentDirectory`
 
@@ -211,6 +228,13 @@ Owns one `GitIgnore` and one `GitRepos` for a directory (default: the current
 directory) and is the only place that works with both. Commands such as
 `add-nested` become thin: construct a `ParentDirectory`, call one operation,
 write.
+
+The two objects are `private`, with read-only (`const`) accessors
+`gitIgnore()` and `gitRepos()`, so commands can only change them through
+`add()`, `remove()` and `fix()`, which keep both files in step. D's
+`private` is per module, and `parentDirectory.d` holds only this class, so
+that is enforced ([D spec: visibility](https://dlang.org/spec/attribute.html#visibility_attributes)).
+A malformed file makes the constructor throw.
 
 `.gitignore` is maintained even when the parent directory is not a git
 repository. There git does not read it ([gitignore docs](https://git-scm.com/docs/gitignore)),
@@ -246,12 +270,18 @@ changing callers.
 
 ### Checks
 
+**Each file on its own:** `ParentDirectory.check()` includes the findings of
+`GitIgnore.check()` and `GitRepos.check()`.
+
 **The two files agree** (no disk access; unit-testable on objects alone):
 
 - A line in `before`/`after` whose directory is in `.gitrepos` (a nested
   pattern outside the block). Fixable: `--fix` moves it into the block.
-- A block entry with no `.gitrepos` entry, and the reverse.
-- Two `.gitrepos` entries for the same directory.
+- A `.gitrepos` entry with no block entry. Fixable: `--fix` adds the
+  pattern to the block (`.gitrepos` holds the url, so it is the fuller
+  record, and adding an ignore line loses nothing).
+- A block entry with no `.gitrepos` entry. Not fixable: there is no url to
+  invent, and deleting the pattern might be wrong, so she decides.
 
 **The disk agrees with the files** (needs real directories to test):
 
