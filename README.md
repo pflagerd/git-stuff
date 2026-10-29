@@ -74,8 +74,8 @@ exits non-zero.
 make
 ```
 
-This builds `bin/add-nested` and `bin/pull-nested` with debug output and
-unit tests compiled in. `make clean` removes them. `bin/.gitignore` keeps the
+This builds `bin/add-nested` and `bin/pull-nested` with debug output
+compiled in. Unit tests are not compiled into them; `make test` runs those. `make clean` removes them. `bin/.gitignore` keeps the
 built programs out of git.
 
 The compiler is set by the `DC` variable, which defaults to `ldmd2`: the
@@ -178,8 +178,9 @@ from `docs/nested-repos-design.md`:
   `.gitignore`.
 - `gitRepos.d`: the `GitRepos` class, which reads, checks, adds to, removes
   from and writes a `.gitrepos`.
-- `parentDirectory.d`: the `ParentDirectory` class, which so far reads and
-  writes both files of a directory.
+- `parentDirectory.d`: the `ParentDirectory` class, which so far reads,
+  writes, adds to, removes from and checks both files of a directory
+  together.
 - `finding.d`: the `Finding` struct that checks return.
 - `textFile.d`: the shared reading and atomic writing.
 
