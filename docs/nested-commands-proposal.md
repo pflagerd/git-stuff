@@ -29,6 +29,7 @@ Four small programs, each a thin layer over `ParentDirectory`:
 |---|---|---|
 | `check-nested` | Reports `check()` and `checkDisk()` findings; with `--fix`, repairs the fixable ones and writes the files | No |
 | `add-nested <directory>...` | Registers existing clones | No |
+| `add-nested --clone <url> [<directory>]` | Clones, then registers | Yes (git over SSH) |
 | `remove-nested <directory>...` | Unregisters; **never deletes a directory** | No |
 | `pull-nested` | Clones missing repos, pulls existing ones | Yes (git over SSH) |
 
@@ -113,9 +114,29 @@ Then `write()` once, then report remaining `check()` findings.
   would leave her guessing which arguments took effect.
 - **`--branch`/`--url` with several directories:** refused (exit 2); they
   only make sense for one.
-- **A url argument** (today's `add-nested <url>`): recommendation, **drop
-  it**; the directory form covers it. Cloning-and-adding could be a later
-  `add-nested --clone`.
+- **A url argument** (today's `add-nested <url>`) is dropped: it only
+  registered an existing clone named after the url, which the directory
+  form already does. In its place (decision 5, option c):
+
+#### `add-nested [-C dir] [--fix] [--branch <name>] --clone <url> [<directory>]`
+
+1. **Directory:** the one given, or else the name `git clone` would choose
+   for the url (`gitCloneDirectoryName.d`, as `pull-nested` uses).
+2. **Checked before touching the network:** the url and directory must
+   pass the rules `validate()` enforces, and the directory must not exist
+   yet, so a bad argument fails before anything is downloaded.
+3. **Clone, then choose the branch,** using the same shared function
+   `pull-nested` uses after a fresh clone: `--branch` if given, otherwise
+   the directory-name rule with its fallback to the default branch.
+4. **Register** as for an existing clone (decision 3's rule decides whether
+   the branch is recorded), then write both files.
+
+- `--clone` takes exactly one url; combining it with directory arguments or
+  `--url` is a usage error (exit 2).
+- All or nothing, with one exception: if the clone succeeds but writing the
+  files fails, the clone stays on disk (the tools never delete
+  directories). The message says so; `add-nested <directory>` then
+  registers it.
 
 ### `remove-nested [-C dir] [--fix] <directory>...`
 
@@ -207,7 +228,8 @@ directory-name rule it records nothing for `blog/` cloned from
 4. **Several arguments:** all or nothing (recommended), or each on its own?
 **Answer:** all or nothing
 5. **Drop the url form of `add-nested`?** (Recommended: yes.)
-**Answer:** Let's discuss this more. Don't do it yet.
+**Answer:** (c): drop it, and add `add-nested --clone <url> [<directory>]`,
+which clones and registers in one step.
 6. **`pull-nested`:** (1) `--ff-only` (recommended)? (2) existing repos on a
    different branch: (i) never switch, warn and pull the current branch
    (recommended), (ii) switch only if the working tree is clean, (iii) always
