@@ -6,7 +6,7 @@ check the nested repos on disk; Finding (finding.d) and textFile.d support
 them.
 
 Next: do the add-nested or pull-nested logic on top of ParentDirectory and write the files out.
-The proposal is in docs/nested-commands-proposal.md; decisions 3, 5 and 6 are still open.
+The proposal is in docs/nested-commands-proposal.md; decision 5 and parts 1 and 3 of decision 6 are still open.
 
 Replace the Python scripts with D, or delete them. Draft plan, to be decided per file:
 - test_add_nested.py: delete once the D tests for add-nested exist; its comment matrix of cases is a checklist for them.

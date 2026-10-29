@@ -135,14 +135,26 @@ says so, so she isn't left wondering.
 
 Two behaviour changes from today, both recommendations:
 
-- **`--ff-only`.** Plain `git pull` may create a merge commit in a nested
-  repo she isn't looking at. `--ff-only` refuses instead, and she merges by
-  hand ([git-pull `--ff-only`](https://git-scm.com/docs/git-pull#Documentation/git-pull.txt---ff-only)).
-- **No branch switching in existing repos.** Today it runs `git checkout`
-  before pulling. Switching branches in a repo she may be working in is
-  surprising; instead, if the current branch differs from the listed one,
-  warn and pull the current branch. Switching happens only right after a
-  clone.
+- **`--ff-only`** (still open). What plain `git pull` does when her branch
+  and the remote's have diverged depends on her own `pull.*` settings
+  ([git-pull](https://git-scm.com/docs/git-pull)). Observed with git 2.43:
+  with none set it refuses (`Need to specify how to reconcile divergent
+  branches`); with `pull.rebase=false` it merges, and a conflict leaves the
+  nested repo in the middle of a merge she isn't looking at; with
+  `pull.rebase=true` it rewrites her local commits. `--ff-only` behaves the
+  same whatever her settings: it only moves a branch forward and otherwise
+  refuses, leaving the repo untouched
+  ([`--ff-only`](https://git-scm.com/docs/git-pull#Documentation/git-pull.txt---ff-only)).
+  (An earlier version of this proposal said plain `git pull` "may create a
+  merge commit"; that is only true with her settings saying to merge.)
+- **No branch switching in existing repos** (decided, 6 part 2, option i).
+  Today it runs `git checkout` before every pull, without checking whether it
+  worked. Observed: a non-clashing uncommitted edit is carried onto the other
+  branch; a clashing one makes the checkout fail, and the pull then runs on
+  whatever branch she was on. Instead: if the current branch differs from the
+  listed (or derived) one, warn and pull the current branch. Switching
+  happens only right after a fresh clone. A listed branch therefore means
+  "clone it on this branch", not "keep it on this branch".
 
 ## Implementation shape
 
@@ -185,9 +197,14 @@ directory-name rule it records nothing for `blog/` cloned from
 **Answer:** all or nothing
 5. **Drop the url form of `add-nested`?** (Recommended: yes.)
 **Answer:** Let's discuss this more. Don't do it yet.
-6. **`pull-nested`:** `--ff-only` (recommended), and no branch switching in
-   existing repos (recommended)?
-**Answer:** Let's discuss this more. Don't do it yet.
+6. **`pull-nested`:** (1) `--ff-only` (recommended)? (2) existing repos on a
+   different branch: (i) never switch, warn and pull the current branch
+   (recommended), (ii) switch only if the working tree is clean, (iii) always
+   switch but stop if it fails? (3) keep or drop the directory-name rule (no
+   branch listed and the directory name differs from the clone name means a
+   branch named after the directory)?
+**Answer:** Part 2: (i), never switch in an existing repo. Parts 1 and 3:
+still open.
 7. **End-to-end tests in pytest** (recommended), or another way?
 **Answer:** In D, not pytest: each command tested in-process through its
 `run()` (option B), plus a quick check per built program. Python in this
