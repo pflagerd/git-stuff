@@ -179,7 +179,8 @@ from `docs/nested-repos-design.md`:
 - `gitRepos.d`: the `GitRepos` class, which reads, checks, adds to, removes
   from and writes a `.gitrepos`.
 - `parentDirectory.d`: the `ParentDirectory` class, which so far reads,
-  writes, adds to and removes from both files of a directory together.
+  writes, adds to, removes from and checks both files of a directory
+  together.
 - `finding.d`: the `Finding` struct that checks return.
 - `textFile.d`: the shared reading and atomic writing.
 
