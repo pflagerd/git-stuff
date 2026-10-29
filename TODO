@@ -1,10 +1,9 @@
 Where we left off (resume here): steps 1-6 below are done, and branch
 gitignore-serialization was fast-forward merged into master, which closed
 #2 #3 #5 #8 #9 #10; #6 was closed by hand (checkDisk covers it). Next:
-- Review README.md end to end (it was edited piece by piece).
-- Open issues: #1 (-m for commit-and-push), #4 (create remote repos),
-  #7 (.gitignore lines outside the managed block: check their directories
-  exist), #11 (the Python delete script), #12 (commit-and-push has no #! line).
+- The remaining work is tracked as GitHub issues, listed in README.md under
+  "Planned work" and "Known issues": #13 (review the README) first, then #1 #4
+  #7, the Python issues #14-#18 and #11, and #12.
 
 The design for this work is in docs/nested-repos-design.md.
 
@@ -20,12 +19,7 @@ Next: the commands in docs/nested-commands-proposal.md (all its decisions are ma
 4. add-nested <directory>... - done; it replaces the old bin/add-nested, and add_nested.d and test_add_nested.py are deleted.
 5. pull-nested - done; it replaces the old bin/pull-nested, and pull_nested.d is deleted.
 6. add-nested --clone - done.
-7. Clean-up: merged to master (done); review the README end to end.
+7. Clean-up: merged to master (done); review the README end to end (#13).
 
-Replace the Python scripts with D, or delete them. Draft plan, to be decided per file:
-- look_for_missing_remotes.py: port to D, perhaps as a network option of check-nested (git ls-remote per repo).
-- find_desktop_directories_not_in_%2Egitrepos.py: port to D as a new check (directories on disk that .gitrepos doesn't list).
-- find_directories_in_%2Egitignore_not_on_disk.py: probably delete; check() and checkDisk() cover it (#7).
-- find_and_remove_desktop_directories_not_in_%2Egitrepos.py: delete, or port very carefully; it deletes directories and is broken (#11).
-- is_pflager_net_in_git_origin.py, is_zax_pflager_net_git_origin.py, add_origin_host_remote.py: unrelated to nested repos; port to D later or delete.
-(test_add_nested.py is deleted and python3-pytest dropped from setup.sh.) When the last script is gone, remove python3 from setup.sh.
+Replacing the Python scripts with D, or deleting them, is tracked as GitHub issues
+#14 #15 #16 #17 #11, then #18 (remove python3 from setup.sh); see README.md, "Planned work".

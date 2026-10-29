@@ -57,7 +57,7 @@ make setup
 
 This runs `./setup.sh`, which installs whichever of these Ubuntu packages are
 missing: `ldc` (the D compiler), `make`, `git` and `python3` (for the
-remaining Python scripts). It uses `apt-get` (via `sudo` unless run as root), and apt
+remaining Python scripts, until [#18](https://github.com/pflagerd/git-stuff/issues/18)). It uses `apt-get` (via `sudo` unless run as root), and apt
 asks before installing anything. Run it again at any time; it installs only
 what's missing.
 
@@ -212,7 +212,8 @@ repository.
 
 ## Python scripts
 
-These are being replaced by D or deleted; the plan is in `TODO`.
+These are being replaced by D or deleted; each links to the issue that
+decides its fate.
 
 All need Python 3 and git, and use only the standard library.
 
@@ -226,18 +227,20 @@ output. Each exits 0 if any path matched and 1 otherwise.
 - **`add_origin_host_remote.py [paths]`** adds a second remote, named after
   the `origin` host, wherever one doesn't already exist.
 
+These three: [#17](https://github.com/pflagerd/git-stuff/issues/17).
+
 The rest read `../.gitrepos` or `../.gitignore`, so they expect to be run from
 a directory one level below the parent repo:
 
 - **`look_for_missing_remotes.py`** prints each `.gitrepos` entry whose remote
-  can't be reached (`git ls-remote` fails).
+  can't be reached (`git ls-remote` fails). [#14](https://github.com/pflagerd/git-stuff/issues/14)
 - **`find_desktop_directories_not_in_%2Egitrepos.py`** prints the directories
-  in `..` that `.gitrepos` doesn't list.
+  in `..` that `.gitrepos` doesn't list. [#15](https://github.com/pflagerd/git-stuff/issues/15)
 - **`find_directories_in_%2Egitignore_not_on_disk.py`** prints the
-  `.gitignore` entries that have no matching directory in `..`.
+  `.gitignore` entries that have no matching directory in `..`. [#16](https://github.com/pflagerd/git-stuff/issues/16)
 - **`find_and_remove_desktop_directories_not_in_%2Egitrepos.py`** offers to
   delete (with a y/N prompt for each) the directories in `..` that aren't
-  listed in `.gitrepos`. **Read the known issues before running it.**
+  listed in `.gitrepos`. **Read the known issues before running it.** [#11](https://github.com/pflagerd/git-stuff/issues/11)
 
 `%2E` in the file names is the URL encoding of `.`.
 
@@ -273,9 +276,21 @@ leave out.
 
 ## Planned work
 
-See `TODO`. The plan is to parse `.gitignore` and `.gitrepos` into data
-structures, check their syntax, sort order and agreement with each other, and
-then do the `add-nested` and `pull-nested` work on those structures.
+Tracked as GitHub issues:
+
+- [#13](https://github.com/pflagerd/git-stuff/issues/13) Review this README end to end.
+- [#7](https://github.com/pflagerd/git-stuff/issues/7) Check that the directories named by `.gitignore` lines outside the
+  managed block still exist.
+- [#1](https://github.com/pflagerd/git-stuff/issues/1) Let `add-commit-push` and `commit-and-push` take `-m` to override
+  the default `progress` message.
+- [#4](https://github.com/pflagerd/git-stuff/issues/4) A utility to create remote repositories (one or several) on the owner's
+  servers, instead of by hand over ssh.
+- Replace the Python scripts with D, or delete them: [#14](https://github.com/pflagerd/git-stuff/issues/14), [#15](https://github.com/pflagerd/git-stuff/issues/15),
+  [#16](https://github.com/pflagerd/git-stuff/issues/16), [#17](https://github.com/pflagerd/git-stuff/issues/17) and [#11](https://github.com/pflagerd/git-stuff/issues/11); then [#18](https://github.com/pflagerd/git-stuff/issues/18) removes `python3` from
+  `setup.sh`.
+
+Bugs are listed under [Known issues](#known-issues). The designs are in
+`docs/nested-repos-design.md` and `docs/nested-commands-proposal.md`.
 
 ## Known issues
 
