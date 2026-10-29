@@ -1,9 +1,10 @@
-Where we left off (resume here): all work is on branch gitignore-serialization.
-Steps 1-6 below are done. Next is step 7:
+Where we left off (resume here): steps 1-6 below are done, and branch
+gitignore-serialization was fast-forward merged into master, which closed
+#2 #3 #5 #8 #9 #10; #6 was closed by hand (checkDisk covers it). Next:
 - Review README.md end to end (it was edited piece by piece).
-- Decide how to get gitignore-serialization onto master: a pull request (Claude can open
-  one if asked) or a direct merge. Merging is what makes GitHub act on the Fixes lines and
-  close #2 #3 #5 #8 #9 #10.
+- Open issues: #1 (-m for commit-and-push), #4 (create remote repos),
+  #7 (.gitignore lines outside the managed block: check their directories
+  exist), #11 (the Python delete script), #12 (commit-and-push has no #! line).
 
 The design for this work is in docs/nested-repos-design.md.
 
@@ -19,7 +20,7 @@ Next: the commands in docs/nested-commands-proposal.md (all its decisions are ma
 4. add-nested <directory>... - done; it replaces the old bin/add-nested, and add_nested.d and test_add_nested.py are deleted.
 5. pull-nested - done; it replaces the old bin/pull-nested, and pull_nested.d is deleted.
 6. add-nested --clone - done.
-7. Clean-up: review the README end to end, and merge to master so the Fixes lines close #2 #3 #5 #8 #9 #10.
+7. Clean-up: merged to master (done); review the README end to end.
 
 Replace the Python scripts with D, or delete them. Draft plan, to be decided per file:
 - look_for_missing_remotes.py: port to D, perhaps as a network option of check-nested (git ls-remote per repo).
