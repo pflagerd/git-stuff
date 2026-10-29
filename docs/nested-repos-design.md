@@ -198,9 +198,10 @@ unreadable form.
 | `path` | `immutable`; where it was read from |
 | `entries` | `GitReposEntry` list, kept sorted by `directory` |
 | constructor | Reads and parses `path` (default `.gitrepos`) |
-| `add(entry)` | Adds, or replaces an entry with the same `directory` |
-| `remove(directory)` | Removes the entry |
-| `write(path?)` | `const`; atomic |
+| `add(entry)` | Normalizes the directory, then adds the entry, replacing every entry with the same directory (duplicates included). Throws `GitReposException` for anything `parse()` would refuse, plus an empty url, so `write()` never produces a file that won't parse. |
+| `remove(directory)` | Normalizes its argument (`"alpha"` works), removes every matching entry, returns whether anything was removed. Never touches the directory on disk. |
+| `content()` | The text `write()` would produce: entries sorted by directory (stable, so duplicates keep their order), fields escaped and single-space separated, branch omitted when empty, final newline; `""` for no entries |
+| `write(path?)` | `const`; atomic. A missing file that would be empty is not created; an existing file whose entries were all removed is written empty, not deleted. |
 
 Two entries with the same directory already in a file are not silently
 merged on read; `ParentDirectory.check()` reports them.
