@@ -56,8 +56,8 @@ make setup
 ```
 
 This runs `./setup.sh`, which installs whichever of these Ubuntu packages are
-missing: `ldc` (the D compiler), `make`, `git`, `python3` and
-`python3-pytest`. It uses `apt-get` (via `sudo` unless run as root), and apt
+missing: `ldc` (the D compiler), `make`, `git` and `python3` (for the
+remaining Python scripts). It uses `apt-get` (via `sudo` unless run as root), and apt
 asks before installing anything. Run it again at any time; it installs only
 what's missing.
 
@@ -123,14 +123,28 @@ reported as with `check-nested`.
 Exit status: 0 done, 1 something wasn't registered or problems remain, 2 bad
 usage or a file that can't be read. Source: `removeNested.d`.
 
-### `add-nested <directory | url> ...`
+### `add-nested [-C <directory>] [--fix] [--branch <name>] [--url <url>] <nested directory>...`
 
-Run from the parent repo. For an existing nested clone, it adds the directory
-to `.gitignore` and adds `<directory> <origin url> [<branch>]` to `.gitrepos`,
-keeping both files sorted. Given a URL, it uses the last path segment of the
-URL as the directory name, and that directory must already exist.
+Registers each nested directory, an existing clone given relative to the
+parent directory (`alpha`, `/alpha/`, `tools/alpha`; no `.` or `..`), in
+`.gitrepos` and in the managed block of `.gitignore`, printing
+`added /alpha/ <url> [<branch>]` for each.
 
-Source: `add_nested.d`. **Currently broken**; see [Known issues](#known-issues).
+- **Every argument is checked first; if any fails, nothing is written.**
+  Each must be the top level of its own git repository and have a url and a
+  branch. Every problem is reported, not just the first.
+- **url:** the stored `remote.origin.url`, or `--url`.
+- **branch:** the current branch, or `--branch` (needed for a detached
+  HEAD). The current branch is left out of `.gitrepos` only when
+  `pull-nested` would arrive at it by itself from a fresh clone (see
+  decision 3 in `docs/nested-commands-proposal.md`); `--branch` is always
+  recorded.
+- `--branch` and `--url` need exactly one nested directory.
+- Afterwards, remaining problems with the two files are reported as with
+  `check-nested`.
+
+Exit status: 0 done, 1 an argument failed or problems remain, 2 bad usage or
+a file that can't be read. Source: `addNested.d`.
 
 ### `pull-nested`
 
@@ -218,9 +232,10 @@ from `docs/nested-repos-design.md`:
 - `parentDirectory.d`: the `ParentDirectory` class, which reads, writes, adds
   to, removes from, checks and fixes both files of a directory together, and
   checks the nested repos on disk.
-- `checkNested.d` and `removeNested.d`: the `check-nested` and
-  `remove-nested` commands, tested in-process through their `run()`
-  functions.
+- `addNested.d`, `checkNested.d` and `removeNested.d`: the `add-nested`,
+  `check-nested` and `remove-nested` commands, tested in-process through
+  their `run()` functions against local repositories (no network or SSH
+  key needed).
 - `nestedCommand.d`: what the commands share: exit statuses, option parsing,
   printing findings, the branch rules and a few git queries.
 - `finding.d`: the `Finding` struct that checks return.
@@ -231,10 +246,6 @@ list in the `Makefile`) and checks that `--help` exits 0 and an unknown
 option exits 2, which covers the one-line `main()` the in-process tests
 leave out.
 
-`test_add_nested.py` lists the planned test cases for `add-nested` in comments.
-One case is written so far, and it clones `git@github.com:pflagerd/a.git`, so
-it needs SSH access to GitHub.
-
 ## Planned work
 
 See `TODO`. The plan is to parse `.gitignore` and `.gitrepos` into data
@@ -243,17 +254,6 @@ then do the `add-nested` and `pull-nested` work on those structures.
 
 ## Known issues
 
-- **`add-nested` fails on relative paths.** It prepends `/` to the directory
-  name and then runs `git -C /<directory>/`, which looks in the filesystem
-  root, so `add-nested alpha` fails with `cannot change to '/alpha/'`. It also
-  writes the entry to `.gitignore` before failing, with a doubled slash
-  (`//alpha/`). ([#8](https://github.com/pflagerd/git-stuff/issues/8))
-- **`add-nested` only handles its first argument.** An unconditional `break`
-  in `main()`'s loop stops after one argument, even though the usage text
-  says it accepts several. ([#9](https://github.com/pflagerd/git-stuff/issues/9))
-- **`add-nested` doesn't save updated `.gitrepos` entries.** When an entry
-  already exists and its branch has changed, the updated line is never
-  written back to the file. ([#10](https://github.com/pflagerd/git-stuff/issues/10))
 - **`find_and_remove_desktop_directories_not_in_%2Egitrepos.py` doesn't
   really check `.gitrepos`.** It saves only the first character of each line
   and compares those against `Path` objects, so no directory ever counts as

@@ -183,7 +183,6 @@ class ParentDirectory
     Finding[] checkDisk() const
     {
         import std.algorithm.searching : findSplit;
-        import std.file : exists, isDir;
         import std.path : buildPath;
         import std.process : execute;
         import std.string : lineSplitter, strip;
@@ -200,49 +199,26 @@ class ParentDirectory
             seen[e.directory] = true;
 
             immutable onDisk = buildPath(directory, e.directory[1 .. $ - 1]);
-            string problem;
-
-            if (!onDisk.exists)
+            string problem = repositoryProblem(e.directory, onDisk);
+            if (problem.length == 0)
             {
-                problem = e.directory ~ " does not exist";
-            }
-            else if (!onDisk.isDir)
-            {
-                problem = e.directory ~ " is not a directory";
-            }
-            else
-            {
-                const top = execute(["git", "-C", onDisk, "rev-parse", "--show-toplevel"]);
-                if (top.status != 0)
+                // Lines are "remote.<name>.url <url>"; exit status 1 just
+                // means there are no remotes.
+                const urls = execute(["git", "-C", onDisk, "config",
+                    "--get-regexp", `^remote\..*\.url$`]);
+                bool found = false;
+                foreach (line; urls.output.lineSplitter)
                 {
-                    problem = e.directory ~ " is not a git repository ("
-                        ~ top.output.strip ~ ")";
-                }
-                else if (resolvePath(top.output.strip) != resolvePath(onDisk))
-                {
-                    problem = e.directory ~ " is inside the repository at "
-                        ~ top.output.strip ~ ", not a repository itself";
-                }
-                else
-                {
-                    // Lines are "remote.<name>.url <url>"; exit status 1 just
-                    // means there are no remotes.
-                    const urls = execute(["git", "-C", onDisk, "config",
-                        "--get-regexp", `^remote\..*\.url$`]);
-                    bool found = false;
-                    foreach (line; urls.output.lineSplitter)
+                    auto nameAndUrl = line.strip.findSplit(" ");
+                    if (nameAndUrl[1].length && nameAndUrl[2] == e.url)
                     {
-                        auto nameAndUrl = line.strip.findSplit(" ");
-                        if (nameAndUrl[1].length && nameAndUrl[2] == e.url)
-                        {
-                            found = true;
-                            break;
-                        }
+                        found = true;
+                        break;
                     }
-                    if (!found)
-                    {
-                        problem = "no remote of " ~ e.directory ~ " has url " ~ e.url;
-                    }
+                }
+                if (!found)
+                {
+                    problem = "no remote of " ~ e.directory ~ " has url " ~ e.url;
                 }
             }
 
@@ -253,6 +229,41 @@ class ParentDirectory
         }
 
         return findings;
+    }
+
+    /**
+     * Why `onDisk` is not a nested repo, or "" if it is: it must exist, be
+     * a directory, and be the top level of its own git repository
+     * (`git rev-parse --show-toplevel` succeeds and names it, compared after
+     * resolving symlinks). `directory` is how messages name it. checkDisk()
+     * and add-nested both use this, so "is this a nested repo?" has one
+     * answer.
+     */
+    static string repositoryProblem(string directory, string onDisk)
+    {
+        import std.file : exists, isDir;
+        import std.process : execute;
+        import std.string : strip;
+
+        if (!onDisk.exists)
+        {
+            return directory ~ " does not exist";
+        }
+        if (!onDisk.isDir)
+        {
+            return directory ~ " is not a directory";
+        }
+        const top = execute(["git", "-C", onDisk, "rev-parse", "--show-toplevel"]);
+        if (top.status != 0)
+        {
+            return directory ~ " is not a git repository (" ~ top.output.strip ~ ")";
+        }
+        if (resolvePath(top.output.strip) != resolvePath(onDisk))
+        {
+            return directory ~ " is inside the repository at " ~ top.output.strip
+                ~ ", not a repository itself";
+        }
+        return "";
     }
 
     /// `path` with every symlink resolved (POSIX realpath(3)), or `path`

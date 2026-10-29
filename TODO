@@ -9,16 +9,15 @@ Next: the commands in docs/nested-commands-proposal.md (all its decisions are ma
 1. nestedCommand.d (shared) - done.
 2. check-nested - done.
 3. remove-nested - done.
-4. add-nested <directory>...
+4. add-nested <directory>... - done; it replaces the old bin/add-nested, and add_nested.d and test_add_nested.py are deleted.
 5. pull-nested.
 6. add-nested --clone.
-7. Clean-up: point bin/add-nested and bin/pull-nested at the new code, delete add_nested.d, pull_nested.d and test_add_nested.py, drop python3-pytest from setup.sh, update the README, close #2 #3 #5 #8 #9 #10.
+7. Clean-up: point bin/pull-nested at the new code, delete pull_nested.d (and debugio.d once nothing uses it), update the README, close #2 #3.
 
 Replace the Python scripts with D, or delete them. Draft plan, to be decided per file:
-- test_add_nested.py: delete once the D tests for add-nested exist; its comment matrix of cases is a checklist for them.
 - look_for_missing_remotes.py: port to D, perhaps as a network option of check-nested (git ls-remote per repo).
 - find_desktop_directories_not_in_%2Egitrepos.py: port to D as a new check (directories on disk that .gitrepos doesn't list).
 - find_directories_in_%2Egitignore_not_on_disk.py: probably delete; check() and checkDisk() cover it (#7).
 - find_and_remove_desktop_directories_not_in_%2Egitrepos.py: delete, or port very carefully; it deletes directories and is broken (#11).
 - is_pflager_net_in_git_origin.py, is_zax_pflager_net_git_origin.py, add_origin_host_remote.py: unrelated to nested repos; port to D later or delete.
-When test_add_nested.py is gone, remove python3-pytest from setup.sh; when the last script is gone, remove python3.
+(test_add_nested.py is deleted and python3-pytest dropped from setup.sh.) When the last script is gone, remove python3 from setup.sh.

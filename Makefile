@@ -11,10 +11,9 @@ DC ?= ldmd2
 DC_PATH := $(or $(shell command -v $(DC) 2>/dev/null),/usr/bin/$(DC))
 
 # The new nested-repo commands, checked by `make test` once built.
-COMMANDS = bin/check-nested bin/remove-nested
+COMMANDS = bin/add-nested bin/check-nested bin/remove-nested
 
 all:\
-	bin/add-nested\
 	bin/pull-nested\
 	$(COMMANDS)
 
@@ -28,17 +27,17 @@ $(DC_PATH):
 	@command -v $(DC) >/dev/null || { echo "Makefile: $(DC) is still not installed. setup.sh installs ldc (ldmd2); install $(DC) yourself, or build with the default DC." >&2; exit 1; }
 
 clean:
-	rm -rf bin/add-nested bin/pull-nested $(COMMANDS)
+	rm -rf bin/pull-nested $(COMMANDS)
 
-
-bin/add-nested: add_nested.d debugio.d | $(DC_PATH)
-	$(DC) -wi -gf -debug add_nested.d debugio.d -of=bin/add-nested
 
 bin/pull-nested: pull_nested.d debugio.d gitCloneDirectoryName.d | $(DC_PATH)
 	$(DC) -wi -gf -debug pull_nested.d debugio.d gitCloneDirectoryName.d -of=bin/pull-nested
 
 # Sources every command is built from, besides its own file.
 LIBRARY = nestedCommand.d parentDirectory.d gitIgnore.d gitRepos.d finding.d textFile.d gitCloneDirectoryName.d
+
+bin/add-nested: addNested.d $(LIBRARY) | $(DC_PATH)
+	$(DC) -wi -gf -debug addNested.d $(LIBRARY) -of=bin/add-nested
 
 bin/check-nested: checkNested.d $(LIBRARY) | $(DC_PATH)
 	$(DC) -wi -gf -debug checkNested.d $(LIBRARY) -of=bin/check-nested
@@ -50,7 +49,7 @@ bin/remove-nested: removeNested.d $(LIBRARY) | $(DC_PATH)
 # and an unknown option exits 2 (main() and the argument plumbing, which the
 # in-process tests don't exercise).
 test: $(COMMANDS) | $(DC_PATH)
-	$(DC) -wi -unittest -main $(LIBRARY) removeNested.d -run checkNested.d
+	$(DC) -wi -unittest -main $(LIBRARY) addNested.d removeNested.d -run checkNested.d
 	@for c in $(COMMANDS); do \
 	    $$c --help >/dev/null || { echo "$$c --help: expected exit 0" >&2; exit 1; }; \
 	    $$c --no-such-option 2>/dev/null; s=$$?; \

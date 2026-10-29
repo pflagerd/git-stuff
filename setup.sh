@@ -10,8 +10,7 @@
 set -euo pipefail
 
 # ldc: the LDC D compiler; its ldmd2 wrapper takes dmd-style flags (Makefile's DC)
-# python3-pytest: runs test_*.py
-packages=(ldc make git python3 python3-pytest)
+packages=(ldc make git python3)
 
 # os-release(5): /etc/os-release, falling back to /usr/lib/os-release.
 # OS_RELEASE_FILE overrides both, for testing this script.
