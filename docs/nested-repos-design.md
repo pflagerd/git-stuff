@@ -244,8 +244,8 @@ but it costs nothing and is already correct if she later runs `git init`.
 
 | Operation | Effect |
 |---|---|
-| `add(directory)` | Adds the entry to `.gitrepos` and the pattern to the `.gitignore` block |
-| `remove(directory)` | Removes both. **Never touches the directory on disk.** Deleting is the one irreversible action here, and it stays out of this class. |
+| `add(entry)` | Adds the entry to `.gitrepos` (replacing any for the same directory), then the directory pattern to the `.gitignore` block if not already there. `.gitrepos` goes first because it validates: if it throws, neither file has changed. |
+| `remove(directory)` | Removes the directory from both (normalized, so `"alpha"` works); returns whether either file had it. **Never touches the directory on disk.** Deleting is the one irreversible action here, and it stays out of this class. |
 | `check()` | Returns a list of findings; prints nothing |
 | `fix()` | Builds corrected `GitIgnore` / `GitRepos` objects for the fixable findings |
 | `write()` | Writes `.gitrepos` then `.gitignore`, each atomically |
