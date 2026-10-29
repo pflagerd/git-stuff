@@ -144,13 +144,20 @@ Two behaviour changes from today, both recommendations:
 
 1. **Commands:** the four above, including the new `check-nested` and
    `remove-nested`? (Recommended: yes.)
+**Answer:** yes
 2. **Exit statuses** 0 / 1 / 2 as above? (Recommended: yes.)
+**Answer:** yes
 3. **Recorded branch in `add-nested`:** (a) today's rule, leave out
    `master`/`main` (recommended); (b) leave out the remote's default branch,
    whatever its name (needs `origin/HEAD`, which isn't always set); (c) always
    record it; (d) only with `--branch`.
+**Answer:** Let's discuss this more. Don't do it yet.
 4. **Several arguments:** all or nothing (recommended), or each on its own?
+**Answer:** all or nothing
 5. **Drop the url form of `add-nested`?** (Recommended: yes.)
+**Answer:** Let's discuss this more. Don't do it yet.
 6. **`pull-nested`:** `--ff-only` (recommended), and no branch switching in
    existing repos (recommended)?
+**Answer:** Let's discuss this more. Don't do it yet.
 7. **End-to-end tests in pytest** (recommended), or another way?
+**Answer:** Let's discuss this more. Don't do it yet.
