@@ -196,7 +196,9 @@ Two behaviour changes from today, both recommendations:
   `version (unittest) {} else { ... }` so test builds can include every
   command module without their `main()`s clashing
   ([D spec: version](https://dlang.org/spec/version.html#predefined-versions)).
-  Shared option parsing and output live in one helper module. `add_nested.d` and `pull_nested.d` are replaced (the program names
+  Shared option parsing and output live in one helper module,
+  `nestedCommand.d`, together with the branch rules (`branchAfterClone`,
+  `branchCanBeOmitted`) that `add-nested` and `pull-nested` must agree on. `add_nested.d` and `pull_nested.d` are replaced (the program names
   in `bin/` stay the same).
 - All git commands run with argument lists, never a shell
   ([#3](https://github.com/pflagerd/git-stuff/issues/3)).

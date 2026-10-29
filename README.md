@@ -189,6 +189,8 @@ from `docs/nested-repos-design.md`:
 - `parentDirectory.d`: the `ParentDirectory` class, which reads, writes, adds
   to, removes from, checks and fixes both files of a directory together, and
   checks the nested repos on disk.
+- `nestedCommand.d`: what the coming commands share: exit statuses, option
+  parsing, printing findings, the branch rules and a few git queries.
 - `finding.d`: the `Finding` struct that checks return.
 - `textFile.d`: the shared reading and atomic writing.
 

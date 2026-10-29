@@ -34,4 +34,4 @@ bin/pull-nested: pull_nested.d debugio.d gitCloneDirectoryName.d | $(DC_PATH)
 	$(DC) -wi -gf -debug pull_nested.d debugio.d gitCloneDirectoryName.d -of=bin/pull-nested
 
 test: | $(DC_PATH)
-	$(DC) -wi -unittest -main finding.d textFile.d gitRepos.d parentDirectory.d -run gitIgnore.d
+	$(DC) -wi -unittest -main finding.d textFile.d gitRepos.d parentDirectory.d gitCloneDirectoryName.d nestedCommand.d -run gitIgnore.d
