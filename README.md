@@ -81,7 +81,10 @@ make
 ```
 
 This builds `bin/add-nested`, `bin/pull-nested`, `bin/check-nested` and
-`bin/remove-nested` with debug output compiled in. Unit tests are not compiled into them; `make test`
+`bin/remove-nested` with debug output compiled in. Every one is linked with
+`debugio.d`, which in these `-debug` builds makes standard output
+unbuffered, so output appears line by line when stepping through a program
+in Kate's debugger. Unit tests are not compiled into them; `make test`
 runs those. `make clean` removes them. `bin/.gitignore` keeps the
 built programs out of git.
 
@@ -146,21 +149,33 @@ parent directory (`alpha`, `/alpha/`, `tools/alpha`; no `.` or `..`), in
 Exit status: 0 done, 1 an argument failed or problems remain, 2 bad usage or
 a file that can't be read. Source: `addNested.d`.
 
-### `pull-nested`
+### `pull-nested [-C <directory>] [--fix]`
 
-Run from the parent repo. For each line of `.gitrepos`:
+For each nested repo in `.gitrepos`, under a `== /alpha/` header, with git's
+own messages shown as they happen:
 
-- If the directory doesn't exist, it runs `git clone <url> <directory>`.
-- If the directory exists, it runs `git -C <directory> pull`.
-- If a branch is given, or the directory name differs from the name
-  `git clone` would choose, it checks out that branch. When no branch is
-  given, the branch name is taken to be the directory name.
+- **Missing:** `git clone <url> <directory>`, then checks out the listed
+  branch. With no branch listed, if the directory's name differs from the
+  name `git clone` would choose, it checks out a branch named after the
+  directory if the remote has one, and otherwise stays on the remote's
+  default branch, saying so.
+- **Exists but isn't a nested repo:** a warning; skipped.
+- **Exists:** `git pull --ff-only`, which only ever moves the branch forward;
+  if the branch has diverged it refuses and leaves the repo as it was,
+  whatever her `pull.*` settings say. **It never switches branches** in an
+  existing repo: if she's on a different branch from the one `.gitrepos`
+  means, it warns and pulls the branch she's on.
+
+A failure in one repo doesn't stop the others. Problems with `.gitignore` and
+`.gitrepos` are reported first but don't stop the pull; `--fix` repairs them
+first. Exit status: 0 done, 1 a repo failed or problems remain, 2 bad usage or
+a file that can't be read. Git runs with its terminal, so ssh can still ask
+for a passphrase.
 
 `gitCloneDirectoryName.d` works out the name `git clone` would choose. It is
 a port of `git_url_basename()` in git's
-[`dir.c`](https://github.com/git/git/blob/master/dir.c).
-
-Source: `pull_nested.d`.
+[`dir.c`](https://github.com/git/git/blob/master/dir.c). Source:
+`pullNested.d`.
 
 ## Bash helpers in `bin/`
 
@@ -232,8 +247,8 @@ from `docs/nested-repos-design.md`:
 - `parentDirectory.d`: the `ParentDirectory` class, which reads, writes, adds
   to, removes from, checks and fixes both files of a directory together, and
   checks the nested repos on disk.
-- `addNested.d`, `checkNested.d` and `removeNested.d`: the `add-nested`,
-  `check-nested` and `remove-nested` commands, tested in-process through
+- `addNested.d`, `checkNested.d`, `pullNested.d` and `removeNested.d`: the
+  four commands, tested in-process through
   their `run()` functions against local repositories (no network or SSH
   key needed).
 - `nestedCommand.d`: what the commands share: exit statuses, option parsing,

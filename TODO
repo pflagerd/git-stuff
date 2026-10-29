@@ -10,9 +10,9 @@ Next: the commands in docs/nested-commands-proposal.md (all its decisions are ma
 2. check-nested - done.
 3. remove-nested - done.
 4. add-nested <directory>... - done; it replaces the old bin/add-nested, and add_nested.d and test_add_nested.py are deleted.
-5. pull-nested.
+5. pull-nested - done; it replaces the old bin/pull-nested, and pull_nested.d is deleted.
 6. add-nested --clone.
-7. Clean-up: point bin/pull-nested at the new code, delete pull_nested.d (and debugio.d once nothing uses it), update the README, close #2 #3.
+7. Clean-up: review the README end to end, and merge to master so the Fixes lines close #2 #3 #5 #8 #9 #10.
 
 Replace the Python scripts with D, or delete them. Draft plan, to be decided per file:
 - look_for_missing_remotes.py: port to D, perhaps as a network option of check-nested (git ls-remote per repo).

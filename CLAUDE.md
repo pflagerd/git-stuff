@@ -48,6 +48,9 @@ Teaching them what you're doing comes first. Speed comes second.
     the `DC` variable) into `bin/add-nested`, `bin/pull-nested`,
     `bin/check-nested` and `bin/remove-nested`.
     `make setup` (`setup.sh`) installs the required packages.
+    `debugio.d` must be linked into every executable (the Makefile's
+    `DEBUG_SUPPORT`): in `-debug` builds it makes stdout unbuffered so
+    Kate's debug plugin shows output as it happens. Don't remove it.
   - Bash helpers in `bin/`, alongside some committed prebuilt binaries
     (e.g. `bin/pull-desktop-repos`, `bin/template`).
   - Python scripts at the top level. These are being replaced by D or
