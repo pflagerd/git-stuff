@@ -128,16 +128,22 @@ Two behaviour changes from today, both recommendations:
 
 ## Implementation shape
 
-- New files `checkNested.d`, `addNested.d`, `removeNested.d`, `pullNested.d`,
-  each a short `main()`; shared option parsing and output in one helper
-  module. `add_nested.d` and `pull_nested.d` are replaced (the program names
+- New files `checkNested.d`, `addNested.d`, `removeNested.d`, `pullNested.d`.
+  Each holds `int run(string[] args, File output, File errors)`, which does
+  all the work, and a one-line `main()` that calls it, inside
+  `version (unittest) {} else { ... }` so test builds can include every
+  command module without their `main()`s clashing
+  ([D spec: version](https://dlang.org/spec/version.html#predefined-versions)).
+  Shared option parsing and output live in one helper module. `add_nested.d` and `pull_nested.d` are replaced (the program names
   in `bin/` stay the same).
 - All git commands run with argument lists, never a shell
   ([#3](https://github.com/pflagerd/git-stuff/issues/3)).
-- Tests: the logic is already unit-tested in the classes; end-to-end tests
-  run the built programs against local repositories in a temp directory
-  (no network or SSH key), written with pytest, which `setup.sh` installs
-  and `test_add_nested.py` already uses.
+- Tests, all in D (decision 7): the classes are already unit-tested. Each
+  command is tested in-process by calling its `run()` from `unittest`
+  blocks, with output captured through temp files, against real git and
+  local repositories in a temp directory (no network or SSH key). One quick
+  check per built program covers `main()` and the argument plumbing:
+  `--help` exits 0 and an unknown option exits 2.
 - Closes, once merged: #2, #3, #5, #8, #9, #10.
 
 ## Decisions
@@ -160,4 +166,6 @@ Two behaviour changes from today, both recommendations:
    existing repos (recommended)?
 **Answer:** Let's discuss this more. Don't do it yet.
 7. **End-to-end tests in pytest** (recommended), or another way?
-**Answer:** Let's discuss this more. Don't do it yet.
+**Answer:** In D, not pytest: each command tested in-process through its
+`run()` (option B), plus a quick check per built program. Python in this
+repo is to be replaced by D or deleted.

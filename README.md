@@ -144,6 +144,8 @@ repository.
 
 ## Python scripts
 
+These are being replaced by D or deleted; the plan is in `TODO`.
+
 All need Python 3 and git, and use only the standard library.
 
 These take paths as arguments (defaulting to `.`) and accept `-v` for verbose

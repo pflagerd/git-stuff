@@ -6,3 +6,13 @@ check the nested repos on disk; Finding (finding.d) and textFile.d support
 them.
 
 Next: do the add-nested or pull-nested logic on top of ParentDirectory and write the files out.
+The proposal is in docs/nested-commands-proposal.md; decisions 3, 5 and 6 are still open.
+
+Replace the Python scripts with D, or delete them. Draft plan, to be decided per file:
+- test_add_nested.py: delete once the D tests for add-nested exist; its comment matrix of cases is a checklist for them.
+- look_for_missing_remotes.py: port to D, perhaps as a network option of check-nested (git ls-remote per repo).
+- find_desktop_directories_not_in_%2Egitrepos.py: port to D as a new check (directories on disk that .gitrepos doesn't list).
+- find_directories_in_%2Egitignore_not_on_disk.py: probably delete; check() and checkDisk() cover it (#7).
+- find_and_remove_desktop_directories_not_in_%2Egitrepos.py: delete, or port very carefully; it deletes directories and is broken (#11).
+- is_pflager_net_in_git_origin.py, is_zax_pflager_net_git_origin.py, add_origin_host_remote.py: unrelated to nested repos; port to D later or delete.
+When test_add_nested.py is gone, remove python3-pytest from setup.sh; when the last script is gone, remove python3.
