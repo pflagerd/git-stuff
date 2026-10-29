@@ -1,7 +1,7 @@
 Where we left off (resume here): steps 1-6 below are done, and branch
 gitignore-serialization was fast-forward merged into master, which closed
 #2 #3 #5 #8 #9 #10; #6 was closed by hand (checkDisk covers it). Next:
-- The README was reviewed end to end (#13, closed when this reaches master).
+- The README was reviewed end to end (#13, closed).
 - The remaining work is tracked as GitHub issues, listed in README.md under
   "Planned work" and "Known issues": #19 (push-nested), #1 #4 #7, the Python
   issues #14-#18 and #11, and #12.

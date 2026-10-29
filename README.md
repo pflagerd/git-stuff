@@ -9,7 +9,7 @@ and fast-forward the rest (`pull-nested`), check that everything agrees
 (`check-nested`) and unregister them (`remove-nested`). Pushing is planned
 ([#19](https://github.com/pflagerd/git-stuff/issues/19)). Switching branches
 across nested repos is deliberately not done: `pull-nested` never changes the
-branch of a repo that already exists, since she may be working in it.
+branch of a repo that already exists, since you may be working in it.
 
 These utilities are for Linux only.
 
@@ -85,7 +85,7 @@ Example:
 
 Each nested directory is also listed in the parent's `.gitignore`, so the
 parent repository doesn't track the nested repo's files. The tools keep those
-entries in one managed block and never change anything outside it, so her own
+entries in one managed block and never change anything outside it, so your own
 lines, comments and their order are left alone:
 
 ```
@@ -119,12 +119,12 @@ remaining Python scripts, until
 [#18](https://github.com/pflagerd/git-stuff/issues/18)). It uses `apt-get`
 (via `sudo` unless run as root), and apt asks before installing anything. It
 can be run again at any time; it installs only what's missing. On a machine
-without `make`, she runs `./setup.sh` directly.
+without `make`, you run `./setup.sh` directly.
 
-She rarely needs to run it by hand: `make`, `make all` and `make test` treat
+You rarely need to run it by hand: `make`, `make all` and `make test` treat
 the compiler as a prerequisite, so if it's missing they run `./setup.sh`
-first. Targets that don't compile, such as `make clean`, never do. If she
-builds with another compiler (`make DC=dmd`) that isn't installed, `make`
+first. Targets that don't compile, such as `make clean`, never do. If you
+build with another compiler (`make DC=dmd`) that isn't installed, `make`
 stops with a message, since `setup.sh` only installs LDC.
 
 It supports only Ubuntu and its derivatives, recognised from `ID` or
@@ -216,12 +216,12 @@ own messages shown as they happen:
 - **Exists but isn't a nested repo:** a warning; skipped.
 - **Exists:** `git pull --ff-only`, which only ever moves the branch forward;
   if the branch has diverged it refuses and leaves the repo as it was,
-  whatever her `pull.*` settings say. **It never switches branches** in an
-  existing repo: if she's on a different branch from the one `.gitrepos`
-  means, it warns and pulls the branch she's on.
+  whatever your `pull.*` settings say. **It never switches branches** in an
+  existing repo: if you're on a different branch from the one `.gitrepos`
+  means, it warns and pulls the branch you're on.
 
 A failure in one repo doesn't stop the others. Problems with the two files
-are reported first but don't stop the pull. Git runs with her terminal, so
+are reported first but don't stop the pull. Git runs with your terminal, so
 ssh can still ask for a passphrase.
 
 ### `check-nested`
@@ -244,7 +244,7 @@ The files are only rewritten if something changed.
 
 These are short wrappers around git. Some call each other (for example,
 `add-commit-push` calls `commit-and-push`, which calls `push`), so `bin/`
-needs to be on her `PATH`.
+needs to be on your `PATH`.
 
 | Script | What it does |
 |---|---|
@@ -363,7 +363,7 @@ Bugs are listed under [Known issues](#known-issues).
   listed. Apart from the y/N prompt, the only safeguard against deleting a
   directory that *is* listed is the separate git work-tree and
   `git check-ignore` test in `git_ignored()`, and what that test decides
-  depends on the directory she runs it from.
+  depends on the directory you run it from.
   ([#11](https://github.com/pflagerd/git-stuff/issues/11))
 - **`bin/commit-and-push` has no `#!` line**, so it runs under whatever shell
   calls it. ([#12](https://github.com/pflagerd/git-stuff/issues/12))

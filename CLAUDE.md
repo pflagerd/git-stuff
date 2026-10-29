@@ -34,8 +34,9 @@ Teaching them what you're doing comes first. Speed comes second.
   explain the corrected understanding.
 
 ### Writing conventions
-- In docs, design notes and code comments, refer to a generic user,
-  developer or programmer as she/her.
+- `README.md` addresses its reader as "you". In other docs, design notes
+  and code comments, refer to a generic user, developer or programmer as
+  she/her.
 - In D code, always put braces around the body of `if`, `else` and loops,
   even for one statement. A braceless body is how issue #9 happened.
 
