@@ -85,6 +85,12 @@ so the markers must be lines of their own.
 | `before` | no (`immutable`) | Lines before the BEGIN marker, exactly as read |
 | `nested` | yes | Patterns inside the block, kept sorted |
 | `after` | no (`immutable`) | Lines after the END marker, exactly as read |
+| `endsWithNewline` | no (`immutable`) | Whether the file's last line ended in `\n` (true for a missing or empty file) |
+
+Lines are split on `\n` only, as git does. A `\r` stays part of its line, so
+a CRLF file is written back unchanged, and a file without a final newline is
+written back without one. Marker lines must match exactly, so in a CRLF file
+`…add-nested)\r` is not a marker.
 
 `before` and `after` are kept exactly as read, comments, blank lines and
 order included. Order matters in `.gitignore` ("the last matching pattern

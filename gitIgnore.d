@@ -16,9 +16,9 @@
  */
 module gitIgnore;
 
+import std.array : split;
 import std.conv : to;
 import std.file : exists, readText;
-import std.string : splitLines;
 
 /// The marker lines. A line is a marker only if it is exactly this text.
 enum beginMarker = "# BEGIN nested repos (managed by add-nested)";
@@ -40,6 +40,7 @@ class GitIgnore
     immutable string[] before; /// lines before the BEGIN marker, exactly as read
     string[] nested;           /// patterns inside the block, in file order
     immutable string[] after;  /// lines after the END marker, exactly as read
+    immutable bool endsWithNewline; /// whether the file's last line ended in '\n'
 
     /**
      * Reads and parses `path`. A missing file is not an error: it reads as
@@ -51,7 +52,9 @@ class GitIgnore
     {
         this.path = path;
 
-        const lines = path.exists ? path.readText.splitLines : [];
+        bool finalNewline;
+        const lines = splitFileLines(path.exists ? path.readText : "", finalNewline);
+        endsWithNewline = finalNewline;
         auto parts = parse(lines);
 
         // immutable fields may only be assigned here, in the constructor
@@ -60,6 +63,30 @@ class GitIgnore
         before = parts.before.idup;
         nested = parts.nested;
         after = parts.after.idup;
+    }
+
+    /**
+     * Splits file text into lines on '\n' only, as git does; a '\r' stays
+     * part of its line, so it is written back unchanged.
+     *
+     * `endsWithNewline` is set to whether the text ended in '\n'. Empty text
+     * counts as ending in one, so a file created from nothing ends the usual
+     * way.
+     */
+    static string[] splitFileLines(string text, out bool endsWithNewline) @safe pure
+    {
+        if (text.length == 0)
+        {
+            endsWithNewline = true;
+            return [];
+        }
+
+        auto lines = text.split("\n");
+        // "a\nb\n" splits to ["a", "b", ""]; the trailing "" marks the newline.
+        endsWithNewline = lines[$ - 1].length == 0;
+        if (endsWithNewline)
+            lines = lines[0 .. $ - 1];
+        return lines;
     }
 
     /// The three parts of a parsed file.
@@ -124,6 +151,33 @@ class GitIgnore
 
         return parts;
     }
+}
+
+// --- splitFileLines() --------------------------------------------------
+
+/// Final newline present, absent, and the empty file.
+unittest
+{
+    bool nl;
+    assert(GitIgnore.splitFileLines("a\nb\n", nl) == ["a", "b"] && nl);
+    assert(GitIgnore.splitFileLines("a\nb", nl) == ["a", "b"] && !nl);
+    assert(GitIgnore.splitFileLines("", nl).length == 0 && nl);
+}
+
+/// Blank lines are kept, including a blank last line before the newline.
+unittest
+{
+    bool nl;
+    assert(GitIgnore.splitFileLines("a\n\nb\n\n", nl) == ["a", "", "b", ""] && nl);
+    assert(GitIgnore.splitFileLines("\n", nl) == [""] && nl);
+}
+
+/// Only '\n' splits: '\r' stays in the line, so CRLF survives a round trip.
+unittest
+{
+    bool nl;
+    assert(GitIgnore.splitFileLines("a\r\nb\r\n", nl) == ["a\r", "b\r"] && nl);
+    assert(GitIgnore.splitFileLines("a\rb\n", nl) == ["a\rb"] && nl);
 }
 
 // --- parse() -----------------------------------------------------------
@@ -218,10 +272,15 @@ unittest
     assert(missing.path == file);
     assert(missing.before.length == 0 && missing.nested.length == 0
         && missing.after.length == 0);
+    assert(missing.endsWithNewline);
 
     file.write("*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\ntmp/\n");
     auto g = new GitIgnore(file);
     assert(g.before == ["*.o"]);
     assert(g.nested == ["/alpha/"]);
     assert(g.after == ["tmp/"]);
+    assert(g.endsWithNewline);
+
+    file.write("*.o\ntmp/");
+    assert(!new GitIgnore(file).endsWithNewline);
 }
