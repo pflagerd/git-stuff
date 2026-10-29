@@ -81,11 +81,15 @@ class GitIgnore
 
         string[] lines = before.dup;
         if (nested.length)
+        {
             lines ~= beginMarker ~ nested.dup.sort.release ~ endMarker;
+        }
         lines ~= after;
 
         if (lines.length == 0)
+        {
             return "";
+        }
         immutable blockIsLast = nested.length && after.length == 0;
         return lines.join("\n") ~ (endsWithNewline || blockIsLast ? "\n" : "");
     }
@@ -112,16 +116,26 @@ class GitIgnore
         immutable target = toPath is null ? path : toPath;
         immutable text = content();
         if (text.length == 0 && !target.exists)
+        {
             return;
+        }
 
         // Hidden, and in the same directory so rename() stays on one file system.
         immutable temporary = buildPath(target.dirName,
             "." ~ target.baseName ~ ".tmp." ~ thisProcessID.to!string);
-        scope (failure) if (temporary.exists) temporary.remove;
+        scope (failure)
+        {
+            if (temporary.exists)
+            {
+                temporary.remove;
+            }
+        }
 
         writeFile(temporary, text);
         if (target.exists)
+        {
             temporary.setAttributes(target.getAttributes & octal!7777);
+        }
         rename(temporary, target);
     }
 
@@ -145,7 +159,9 @@ class GitIgnore
         // "a\nb\n" splits to ["a", "b", ""]; the trailing "" marks the newline.
         endsWithNewline = lines[$ - 1].length == 0;
         if (endsWithNewline)
+        {
             lines = lines[0 .. $ - 1];
+        }
         return lines;
     }
 
@@ -181,33 +197,53 @@ class GitIgnore
             if (line == beginMarker)
             {
                 if (where == Where.inside)
+                {
                     throw new GitIgnoreException("line " ~ lineNumber.to!string
                         ~ ": BEGIN marker inside the block opened on line "
                         ~ beginLine.to!string);
+                }
                 if (where == Where.after)
+                {
                     throw new GitIgnoreException("line " ~ lineNumber.to!string
                         ~ ": a second managed block; only one is allowed");
+                }
                 where = Where.inside;
                 beginLine = lineNumber;
             }
             else if (line == endMarker)
             {
                 if (where != Where.inside)
+                {
                     throw new GitIgnoreException("line " ~ lineNumber.to!string
                         ~ ": END marker without a BEGIN marker before it");
+                }
                 where = Where.after;
             }
-            else final switch (where)
+            else
             {
-                case Where.before: parts.before ~= line; break;
-                case Where.inside: if (line.length) parts.nested ~= line; break;
-                case Where.after:  parts.after ~= line; break;
+                final switch (where)
+                {
+                    case Where.before:
+                        parts.before ~= line;
+                        break;
+                    case Where.inside:
+                        if (line.length)
+                        {
+                            parts.nested ~= line;
+                        }
+                        break;
+                    case Where.after:
+                        parts.after ~= line;
+                        break;
+                }
             }
         }
 
         if (where == Where.inside)
+        {
             throw new GitIgnoreException("line " ~ beginLine.to!string
                 ~ ": BEGIN marker without an END marker after it");
+        }
 
         return parts;
     }
@@ -330,7 +366,9 @@ version (unittest)
         immutable directory = buildPath(tempDir,
             "gitIgnore-test-" ~ thisProcessID.to!string ~ "-" ~ name);
         if (directory.exists)
+        {
             directory.rmdirRecurse;
+        }
         directory.mkdirRecurse;
         return directory;
     }
