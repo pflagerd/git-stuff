@@ -77,9 +77,27 @@ For each directory:
 2. **url:** the stored `remote.origin.url` (the same value `checkDisk()`
    compares). `--url` overrides it; with no `origin` and no `--url`, it's an
    error for that argument.
-3. **branch:** `--branch` if given; otherwise the current branch, left out
-   when it is `master` or `main` (today's rule). Recommendation: keep today's
-   rule; see decision 3.
+3. **branch** (decision 3, option a′): `--branch` if given; otherwise the
+   current branch (`git symbolic-ref --short HEAD`). No current branch
+   (detached HEAD) is an error for that argument unless `--branch` is given.
+   The branch is **left out** of `.gitrepos` only when `pull-nested` would
+   arrive at the same branch by itself, so the two tools can't disagree:
+   - If the directory's last component differs from the name `git clone`
+     would choose for the url (`gitCloneDirectoryName.d`), `pull-nested`
+     would check out a branch named after the directory: leave it out only
+     if the current branch has that name.
+   - Otherwise `pull-nested` would get the remote's default branch: leave it
+     out only if the current branch equals it, read locally from
+     `refs/remotes/origin/HEAD` (`git symbolic-ref --short
+     refs/remotes/origin/HEAD`, e.g. `origin/main`;
+     [git-symbolic-ref](https://git-scm.com/docs/git-symbolic-ref)).
+   - Anything unknown records the branch: no `origin/HEAD`, a `--url` that
+     isn't `origin`'s url, or any error. Recording is always correct;
+     leaving it out is only a shorthand.
+
+   The rule "which branch does a line with no branch mean" is one shared
+   function used by both `add-nested` and `pull-nested`. If decision 6 drops
+   the directory-name rule, the first bullet goes away.
 4. `ParentDirectory.add(entry)`.
 
 Then `write()` once, then report remaining `check()` findings.
@@ -157,7 +175,12 @@ Two behaviour changes from today, both recommendations:
    `master`/`main` (recommended); (b) leave out the remote's default branch,
    whatever its name (needs `origin/HEAD`, which isn't always set); (c) always
    record it; (d) only with `--branch`.
-**Answer:** Let's discuss this more. Don't do it yet.
+**Answer:** (a′): leave the branch out only when `pull-nested` would arrive
+at the same branch by itself; record it otherwise, including whenever that
+can't be determined. Option (a) was withdrawn: combined with `pull-nested`'s
+directory-name rule it records nothing for `blog/` cloned from
+`blog-bootstrap` on `master`, and a fresh pull then checks out a branch named
+`blog`.
 4. **Several arguments:** all or nothing (recommended), or each on its own?
 **Answer:** all or nothing
 5. **Drop the url form of `add-nested`?** (Recommended: yes.)
