@@ -16,10 +16,10 @@ clean:
 
 
 bin/add-nested: add_nested.d debugio.d
-	$(DC) -wi -gf -unittest -debug add_nested.d debugio.d -of=bin/add-nested
+	$(DC) -wi -gf -debug add_nested.d debugio.d -of=bin/add-nested
 
 bin/pull-nested: pull_nested.d debugio.d gitCloneDirectoryName.d
-	$(DC) -wi -gf -unittest -debug pull_nested.d debugio.d gitCloneDirectoryName.d -of=bin/pull-nested
+	$(DC) -wi -gf -debug pull_nested.d debugio.d gitCloneDirectoryName.d -of=bin/pull-nested
 
 test:
 	$(DC) -wi -unittest -main finding.d textFile.d gitRepos.d -run gitIgnore.d
