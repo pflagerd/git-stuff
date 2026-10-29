@@ -204,7 +204,11 @@ unreadable form.
 | `write(path?)` | `const`; atomic. A missing file that would be empty is not created; an existing file whose entries were all removed is written empty, not deleted. |
 
 Two entries with the same directory already in a file are not silently
-merged on read; `ParentDirectory.check()` reports them.
+merged on read or write. `check()` reports, without changing anything:
+entries not sorted by directory (fixable: `write()` sorts), and each
+directory listed more than once, with the count (not fixable: which url or
+branch is right is her call). Everything else that could be wrong with a
+line is refused by `parse()`.
 
 ### Round trip
 
@@ -259,12 +263,14 @@ changing callers.
 
 ### Checks
 
+**Each file on its own:** `ParentDirectory.check()` includes the findings of
+`GitIgnore.check()` and `GitRepos.check()`.
+
 **The two files agree** (no disk access; unit-testable on objects alone):
 
 - A line in `before`/`after` whose directory is in `.gitrepos` (a nested
   pattern outside the block). Fixable: `--fix` moves it into the block.
 - A block entry with no `.gitrepos` entry, and the reverse.
-- Two `.gitrepos` entries for the same directory.
 
 **The disk agrees with the files** (needs real directories to test):
 

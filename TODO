@@ -1,10 +1,7 @@
 The design for this work is in docs/nested-repos-design.md.
 
-GitIgnore (gitIgnore.d): read .gitignore into a data structure in the constructor; write() writes it back.
-Check .gitignore's managed block for syntax and sort order, and rewrite it if --fix is given.
-
-GitRepos (gitRepos.d): read .gitrepos into a data structure in the constructor; write() writes it back.
-Check .gitrepos for syntax and sort order.
+Done: GitIgnore (gitIgnore.d) and GitRepos (gitRepos.d) read, check and write
+their files; Finding (finding.d) and textFile.d support them.
 
 ParentDirectory (parentDirectory.d): check agreement between .gitignore and .gitrepos, and with the disk, and rewrite one, the other, or both if --fix is given.
 

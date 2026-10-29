@@ -16,6 +16,7 @@ module gitRepos;
 
 import std.conv : to;
 
+import finding : Finding;
 import textFile : readIfExists, splitFileLines, writeAtomically;
 
 /// One line of .gitrepos.
@@ -175,6 +176,51 @@ class GitRepos
         immutable before = entries.length;
         entries = entries.filter!(e => e.directory != target).array;
         return entries.length != before;
+    }
+
+    /**
+     * Problems with the entries. Nothing is changed.
+     *
+     * - Entries are not sorted by directory (fixable: write() sorts them).
+     * - A directory is listed more than once (not fixable: which url or
+     *   branch is right is her call). One finding per directory, saying how
+     *   many times it is listed.
+     *
+     * Findings come in a fixed order: "not sorted" first, then duplicates in
+     * the order their directories first appear. Everything else that could
+     * be wrong with a line is already refused by parse().
+     */
+    Finding[] check() const @safe pure
+    {
+        import std.algorithm.sorting : isSorted;
+
+        Finding[] findings;
+
+        if (!entries.isSorted!((a, b) => a.directory < b.directory))
+        {
+            findings ~= Finding("", path ~ ": entries are not sorted by directory", true);
+        }
+
+        size_t[string] count;
+        string[] order; // directories in order of first appearance
+        foreach (e; entries)
+        {
+            if (e.directory !in count)
+            {
+                order ~= e.directory;
+            }
+            ++count[e.directory];
+        }
+        foreach (directory; order)
+        {
+            if (count[directory] > 1)
+            {
+                findings ~= Finding(directory, path ~ ": " ~ directory ~ " is listed "
+                    ~ count[directory].to!string ~ " times", false);
+            }
+        }
+
+        return findings;
     }
 
     /**
@@ -785,4 +831,77 @@ unittest
     // '%' is escaped on writing.
     assert(through("/foo%2Ebar/ a.git\n") == "/foo%252Ebar/ a.git\n");
     assert(through("/a/ a.git x%0ay\n") == "/a/ a.git x%250ay\n");
+}
+
+// --- check() ---------------------------------------------------------------
+
+/// Sorted entries with distinct directories have no findings.
+unittest
+{
+    immutable directory = testDirectory("gitRepos-check-clean");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    assert(fromText(directory, "/alpha/ a.git\n/beta/ b.git dev\n").check.length == 0);
+    assert(fromText(directory, "").check.length == 0);
+}
+
+/// Unsorted entries: one fixable, whole-file finding.
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable directory = testDirectory("gitRepos-check-unsorted");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory, "/beta/ b.git\n/alpha/ a.git\n");
+    const findings = g.check;
+    assert(findings.length == 1);
+    assert(findings[0].directory == "" && findings[0].fixable);
+    assert(findings[0].message.canFind(g.path) && findings[0].message.canFind("not sorted"));
+}
+
+/// Duplicates: one unfixable finding per directory, with the count, in
+/// first-appearance order, after "not sorted".
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable directory = testDirectory("gitRepos-check-duplicates");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory,
+        "/gamma/ c.git\n/alpha/ a.git\n/gamma/ c2.git\n/alpha/ a2.git\n/alpha/ a3.git\n");
+    const findings = g.check;
+    assert(findings.length == 3);
+    assert(findings[0].message.canFind("not sorted"));
+    assert(findings[1].directory == "/gamma/" && !findings[1].fixable
+        && findings[1].message.canFind("listed 2 times"));
+    assert(findings[2].directory == "/alpha/" && !findings[2].fixable
+        && findings[2].message.canFind("listed 3 times"));
+    foreach (f; findings)
+    {
+        assert(f.message.canFind(g.path)); // every message names the file
+    }
+}
+
+/// Sorted duplicates still report the duplicate, but not "not sorted".
+unittest
+{
+    immutable directory = testDirectory("gitRepos-check-sorted-duplicates");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    const findings = fromText(directory, "/alpha/ a.git\n/alpha/ b.git\n").check;
+    assert(findings.length == 1 && findings[0].directory == "/alpha/");
 }
