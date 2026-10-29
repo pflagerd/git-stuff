@@ -138,10 +138,13 @@ class GitIgnore
     }
 
     /// Whether `entry` looks like `/directory/` (or `/a/b/`): a leading and
-    /// trailing slash with something between them.
-    static bool isDirectoryPattern(string entry) @safe pure nothrow @nogc
+    /// trailing slash with something between them, and no "//" anywhere.
+    static bool isDirectoryPattern(string entry) @safe pure nothrow
     {
-        return entry.length > 2 && entry[0] == '/' && entry[$ - 1] == '/';
+        import std.algorithm.searching : canFind;
+
+        return entry.length > 2 && entry[0] == '/' && entry[$ - 1] == '/'
+            && !entry.canFind("//");
     }
 
     /// A sorted copy of `entries` with repeats removed.
@@ -598,5 +601,8 @@ unittest
     assert(!GitIgnore.isDirectoryPattern("/alpha"));
     assert(!GitIgnore.isDirectoryPattern("alpha/"));
     assert(!GitIgnore.isDirectoryPattern("//"));
+    assert(!GitIgnore.isDirectoryPattern("//alpha/"));       // too many slashes
+    assert(!GitIgnore.isDirectoryPattern("/alpha//"));
+    assert(!GitIgnore.isDirectoryPattern("/tools//alpha/"));
     assert(!GitIgnore.isDirectoryPattern("/alpha/\r")); // CRLF line: '\r' is part of it
 }

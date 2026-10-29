@@ -171,11 +171,16 @@ a directory one level below the parent repo:
 make test
 ```
 
-This compiles and runs the D `unittest` blocks in `gitIgnore.d`, where the
-`GitIgnore` class from `docs/nested-repos-design.md` is being built, along
-with `finding.d` (the `Finding` struct its checks return) and `textFile.d`
-(the shared reading and atomic writing it uses). So far it reads, checks and
-writes a `.gitignore`; nothing uses it yet.
+This compiles and runs the D `unittest` blocks in the modules being built
+from `docs/nested-repos-design.md`:
+
+- `gitIgnore.d`: the `GitIgnore` class, which reads, checks and writes a
+  `.gitignore`.
+- `gitRepos.d`: the `GitRepos` class, which so far only reads a `.gitrepos`.
+- `finding.d`: the `Finding` struct that checks return.
+- `textFile.d`: the shared reading and atomic writing.
+
+Nothing uses them yet.
 
 `test_add_nested.py` lists the planned test cases for `add-nested` in comments.
 One case is written so far, and it clones `git@github.com:pflagerd/a.git`, so

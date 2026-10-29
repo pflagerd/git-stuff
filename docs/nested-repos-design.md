@@ -119,7 +119,8 @@ used. Only `nested` is ever sorted.
   replacement before the rename.
 - **`check()`** reports, without changing anything: an unsorted block
   (fixable), an entry appearing more than once (fixable), and an entry not of
-  the form `/directory/` (not fixable: rewriting it would be a guess).
+  the form `/directory/`, including one with `//` anywhere (not fixable:
+  rewriting it would be a guess).
   Messages name the file's `path`; `directory` is `""` for a whole-file
   problem. Findings carry no line numbers, because the parsed object doesn't
   keep them; a malformed block, found while parsing, does report its line.
@@ -154,13 +155,17 @@ One line per nested repo, fields separated by single spaces:
 ```
 
 The whole file is tool-managed (no block). On read, blank lines and lines
-starting with `#` are skipped; they are not written back.
+starting with `#` are skipped; they are not written back. Fields are split on
+runs of whitespace, so older files with double spaces or tabs still read;
+the file is always written with single spaces and a final newline. Entries
+keep their file order, duplicates included, so `check()` can report them.
+A line with fewer than two or more than three fields is a parse error.
 
 ### Entry fields (`GitReposEntry`)
 
 | Field | Required? | Meaning |
 |---|---|---|
-| `directory` | yes | Relative to the parent directory. Always written as `/alpha/`; read in any form (`alpha`, `/alpha`, `alpha/`, `/alpha/`) so existing files keep working (#5). Nested paths such as `/tools/gamma/` are allowed. |
+| `directory` | yes | Relative to the parent directory. Always written as `/alpha/`; read in any form (`alpha`, `/alpha`, `alpha/`, `/alpha/`) so existing files keep working (#5). A doubled slash anywhere (`//alpha/`, `/tools//gamma/`) is a parse error naming the line. Nested paths such as `/tools/gamma/` are allowed. |
 | `url` | yes | A git URL as `git clone` defines it ([git-clone: GIT URLS](https://git-scm.com/docs/git-clone#_git_urls)): `ssh://`, `https://`, `file://`, scp-like `user@host:path`, or a local path. It must equal the fetch url of at least one remote in the nested repo (`remote.<name>.url`, as shown by `git remote -v`). |
 | `branch` | no | When given, that branch is checked out. When absent: if `directory`'s last part differs from the name `git clone` would choose (`gitCloneDirectoryName.d`), check out a branch named after the directory; otherwise use the remote's default branch. |
 
