@@ -229,6 +229,13 @@ directory) and is the only place that works with both. Commands such as
 `add-nested` become thin: construct a `ParentDirectory`, call one operation,
 write.
 
+The two objects are `private`, with read-only (`const`) accessors
+`gitIgnore()` and `gitRepos()`, so commands can only change them through
+`add()`, `remove()` and `fix()`, which keep both files in step. D's
+`private` is per module, and `parentDirectory.d` holds only this class, so
+that is enforced ([D spec: visibility](https://dlang.org/spec/attribute.html#visibility_attributes)).
+A malformed file makes the constructor throw.
+
 `.gitignore` is maintained even when the parent directory is not a git
 repository. There git does not read it ([gitignore docs](https://git-scm.com/docs/gitignore)),
 but it costs nothing and is already correct if she later runs `git init`.
@@ -270,7 +277,11 @@ changing callers.
 
 - A line in `before`/`after` whose directory is in `.gitrepos` (a nested
   pattern outside the block). Fixable: `--fix` moves it into the block.
-- A block entry with no `.gitrepos` entry, and the reverse.
+- A `.gitrepos` entry with no block entry. Fixable: `--fix` adds the
+  pattern to the block (`.gitrepos` holds the url, so it is the fuller
+  record, and adding an ignore line loses nothing).
+- A block entry with no `.gitrepos` entry. Not fixable: there is no url to
+  invent, and deleting the pattern might be wrong, so she decides.
 
 **The disk agrees with the files** (needs real directories to test):
 
