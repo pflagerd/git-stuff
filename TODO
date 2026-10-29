@@ -1,3 +1,11 @@
+Where we left off (resume here): all work is on branch gitignore-serialization.
+Steps 1-6 below are done. Next is step 7:
+- Review README.md end to end (it was edited piece by piece).
+- Decide how to get gitignore-serialization onto master: a pull request (Claude can open
+  one if asked) or a direct merge. Merging is what makes GitHub act on the Fixes lines and
+  close #2 #3 #5 #8 #9 #10.
+- Decide whether to delete the old branch claude/loving-dijkstra-vgeqnm (no longer needed).
+
 The design for this work is in docs/nested-repos-design.md.
 
 Done: GitIgnore (gitIgnore.d), GitRepos (gitRepos.d) and ParentDirectory
