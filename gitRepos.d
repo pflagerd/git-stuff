@@ -712,3 +712,77 @@ unittest
     g.write();
     assert(g.path.exists && g.path.readText == "");
 }
+
+// --- round trip ------------------------------------------------------------
+
+/// Files already in the tool's own format come back byte for byte, through
+/// content() and through write().
+unittest
+{
+    import std.file : read, write;
+
+    immutable directory = testDirectory("gitRepos-round-trip");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    immutable string[] files = [
+        "",                                                              // empty file
+        "/alpha/ git@github.com:pflagerd/alpha.git\n",                   // scp-like (ssh)
+        "/alpha/ git@github.com:pflagerd/alpha.git\n/beta/ git@github.com:pflagerd/beta.git dev\n",
+        "/alpha/ ssh://git@github.com/pflagerd/alpha.git feature/x\n",   // ssh:// and a slash in a branch
+        "/local/ file:///srv/git/local.git\n/other/ /srv/git/other.git\n",
+        "/tools/gamma/ git@github.com:pflagerd/gamma.git\n",             // nested path
+        "/My%20Repo/ /srv/git/my%20repo.git 100%25\n",                   // escapes
+        "/alpha/ first.git\n/alpha/ second.git\n",                       // duplicates, in order
+    ];
+
+    foreach (i, original; files)
+    {
+        immutable file = buildPath(directory, ".gitrepos");
+        file.write(original);
+        auto g = new GitRepos(file);
+        assert(g.content == original, "content() differs for case " ~ i.to!string);
+
+        g.write();
+        assert(cast(string) file.read == original, "write() differs for case " ~ i.to!string);
+    }
+}
+
+/// Where the tool deliberately changes a file on the way through.
+unittest
+{
+    import std.file : write;
+
+    immutable directory = testDirectory("gitRepos-round-trip-changes");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    string through(string text)
+    {
+        immutable file = buildPath(directory, ".gitrepos");
+        file.write(text);
+        return new GitRepos(file).content;
+    }
+
+    // Comments and blank lines are dropped.
+    assert(through("# repos\n\n/alpha/ a.git\n") == "/alpha/ a.git\n");
+    // Runs of whitespace become single spaces.
+    assert(through("/alpha/   a.git\t\tdev\n") == "/alpha/ a.git dev\n");
+    // Every slash form becomes /alpha/.
+    assert(through("alpha a.git\n/beta b.git\ngamma/ c.git\n")
+        == "/alpha/ a.git\n/beta/ b.git\n/gamma/ c.git\n");
+    // Lines are sorted by directory.
+    assert(through("/beta/ b.git\n/alpha/ a.git\n") == "/alpha/ a.git\n/beta/ b.git\n");
+    // A final newline is added.
+    assert(through("/alpha/ a.git") == "/alpha/ a.git\n");
+    // A CRLF line's '\r' is dropped.
+    assert(through("/alpha/ a.git\r\n") == "/alpha/ a.git\n");
+    // Literal '%' that isn't one of the four escapes reads as text, and its
+    // '%' is escaped on writing.
+    assert(through("/foo%2Ebar/ a.git\n") == "/foo%252Ebar/ a.git\n");
+    assert(through("/a/ a.git x%0ay\n") == "/a/ a.git x%250ay\n");
+}

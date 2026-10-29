@@ -206,6 +206,18 @@ unreadable form.
 Two entries with the same directory already in a file are not silently
 merged on read; `ParentDirectory.check()` reports them.
 
+### Round trip
+
+A `.gitrepos` already in the tool's own format comes back byte for byte:
+lines sorted by directory, each directory in `/alpha/` form, fields escaped
+as `escapeField` writes them and separated by single spaces, no comments or
+blank lines, and a final newline. Otherwise the tool changes the file on
+purpose: comments and blank lines are dropped, runs of whitespace become
+single spaces, every slash form becomes `/alpha/`, lines are sorted, a final
+newline is added, a CRLF line's `\r` is dropped, and literal `%` text that
+isn't one of the four escapes (e.g. `%2E`) has its `%` escaped
+(`%252E`). `gitRepos.d`'s unit tests check both lists.
+
 ## `ParentDirectory`
 
 Owns one `GitIgnore` and one `GitRepos` for a directory (default: the current
