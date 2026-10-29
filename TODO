@@ -1,8 +1,8 @@
 The design for this work is in docs/nested-repos-design.md.
 
-Done: GitIgnore (gitIgnore.d) and GitRepos (gitRepos.d) read, check and write
-their files; Finding (finding.d) and textFile.d support them.
+Done: GitIgnore (gitIgnore.d), GitRepos (gitRepos.d) and ParentDirectory
+(parentDirectory.d) read, check, fix and write .gitignore and .gitrepos and
+check the nested repos on disk; Finding (finding.d) and textFile.d support
+them.
 
-ParentDirectory (parentDirectory.d): check agreement between .gitignore and .gitrepos, and with the disk, and rewrite one, the other, or both if --fix is given.
-
-Then do the add-nested or pull-nested logic on top of ParentDirectory and write the files out.
+Next: do the add-nested or pull-nested logic on top of ParentDirectory and write the files out.

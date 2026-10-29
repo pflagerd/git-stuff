@@ -298,9 +298,18 @@ Findings come in that order: `.gitignore`'s own, `.gitrepos`'s own, loose
 lines, repos missing from the block, block entries missing from
 `.gitrepos`; each group in file order.
 
-**The disk agrees with the files** (needs real directories to test):
+**The disk agrees with the files:** a separate method, `checkDisk()`, so
+`check()` never touches the disk; commands that want both call both. None
+of these findings is fixable (a missing clone is `pull-nested`'s job; the
+rest need her judgement). For each distinct `.gitrepos` directory, in file
+order, the first problem found is reported. Git is run with an argument
+list, never through a shell, so names with spaces are safe. Tested with
+local repositories in a temp directory (no network or SSH key needed).
 
-- The directory exists (#6, #7).
+- The directory exists (#6). Directories in the `.gitignore` block are
+  covered too (#7): each must be in `.gitrepos` (`check()`), and every
+  `.gitrepos` directory is checked here.
+- It is a directory.
 - The directory is a nested repo: `git -C <directory> rev-parse --show-toplevel`
   **succeeds** and prints the directory's **own** absolute path, compared
   after resolving symlinks on both sides
@@ -312,9 +321,12 @@ lines, repos missing from the block, block entries missing from
   - for a plain folder with no repo above it, git fails with
     `fatal: not a git repository` and exit status 128;
   - for a plain folder inside a repo, git prints that repo's root.
-- At least one remote's fetch url equals the entry's `url`, compared as exact
+- At least one remote's url equals the entry's `url`, compared as exact
   text (`git@github.com:u/a.git` and `https://github.com/u/a.git` do not
-  match; she decides).
+  match; she decides). Any remote counts, not only `origin`. The url is the
+  stored `remote.<name>.url` (`git config --get-regexp`), not the one `git
+  remote get-url` shows after rewriting it through `url.<base>.insteadOf`
+  ([git-config](https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf)).
 - Further criteria: TBD.
 
 ### `--fix` and exit status
@@ -322,8 +334,8 @@ lines, repos missing from the block, block entries missing from
 - **Without `--fix`:** report findings, change nothing.
 - **With `--fix`:** build new objects with the fixable findings repaired,
   then write them.
-- **Exit status:** non-zero when `check()` reports any finding, so scripts
-  notice, as linters do.
+- **Exit status:** non-zero when `check()` or `checkDisk()` reports any
+  finding, so scripts notice, as linters do.
 
 ## Open questions
 

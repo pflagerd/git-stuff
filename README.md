@@ -184,9 +184,9 @@ from `docs/nested-repos-design.md`:
   `.gitignore`.
 - `gitRepos.d`: the `GitRepos` class, which reads, checks, adds to, removes
   from and writes a `.gitrepos`.
-- `parentDirectory.d`: the `ParentDirectory` class, which so far reads,
-  writes, adds to, removes from and checks both files of a directory
-  together.
+- `parentDirectory.d`: the `ParentDirectory` class, which reads, writes, adds
+  to, removes from, checks and fixes both files of a directory together, and
+  checks the nested repos on disk.
 - `finding.d`: the `Finding` struct that checks return.
 - `textFile.d`: the shared reading and atomic writing.
 

@@ -163,6 +163,119 @@ class ParentDirectory
     }
 
     /**
+     * Problems on disk with the nested repos .gitrepos lists. None is
+     * fixable: a missing clone is pull-nested's job, and the rest need her
+     * judgement. check() never touches the disk; this always does.
+     *
+     * For each distinct directory, in file order, the first problem found:
+     * 1. it does not exist (#6);
+     * 2. it is not a directory;
+     * 3. `git -C <dir> rev-parse --show-toplevel` fails: not a git
+     *    repository (git's own message is included);
+     * 4. git names a different top level, compared after resolving symlinks
+     *    on both sides: it is inside another repository, not one itself;
+     * 5. no remote's url (`remote.<name>.url`, as stored, before any
+     *    insteadOf rewriting) equals the url in .gitrepos.
+     *
+     * Git is run with an argument list, never through a shell, so names
+     * with spaces are safe.
+     */
+    Finding[] checkDisk() const
+    {
+        import std.algorithm.searching : findSplit;
+        import std.file : exists, isDir;
+        import std.path : buildPath;
+        import std.process : execute;
+        import std.string : lineSplitter, strip;
+
+        Finding[] findings;
+        bool[string] seen;
+
+        foreach (e; gitRepos_.entries)
+        {
+            if (e.directory in seen)
+            {
+                continue;
+            }
+            seen[e.directory] = true;
+
+            immutable onDisk = buildPath(directory, e.directory[1 .. $ - 1]);
+            string problem;
+
+            if (!onDisk.exists)
+            {
+                problem = e.directory ~ " does not exist";
+            }
+            else if (!onDisk.isDir)
+            {
+                problem = e.directory ~ " is not a directory";
+            }
+            else
+            {
+                const top = execute(["git", "-C", onDisk, "rev-parse", "--show-toplevel"]);
+                if (top.status != 0)
+                {
+                    problem = e.directory ~ " is not a git repository ("
+                        ~ top.output.strip ~ ")";
+                }
+                else if (resolvePath(top.output.strip) != resolvePath(onDisk))
+                {
+                    problem = e.directory ~ " is inside the repository at "
+                        ~ top.output.strip ~ ", not a repository itself";
+                }
+                else
+                {
+                    // Lines are "remote.<name>.url <url>"; exit status 1 just
+                    // means there are no remotes.
+                    const urls = execute(["git", "-C", onDisk, "config",
+                        "--get-regexp", `^remote\..*\.url$`]);
+                    bool found = false;
+                    foreach (line; urls.output.lineSplitter)
+                    {
+                        auto nameAndUrl = line.strip.findSplit(" ");
+                        if (nameAndUrl[1].length && nameAndUrl[2] == e.url)
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found)
+                    {
+                        problem = "no remote of " ~ e.directory ~ " has url " ~ e.url;
+                    }
+                }
+            }
+
+            if (problem.length)
+            {
+                findings ~= Finding(e.directory, onDisk ~ ": " ~ problem, false);
+            }
+        }
+
+        return findings;
+    }
+
+    /// `path` with every symlink resolved (POSIX realpath(3)), or `path`
+    /// itself if it can't be resolved.
+    static string resolvePath(string path) @trusted
+    {
+        import core.stdc.stdlib : free;
+        import core.sys.posix.stdlib : realpath;
+        import std.string : fromStringz, toStringz;
+
+        auto resolved = realpath(path.toStringz, null);
+        if (resolved is null)
+        {
+            return path;
+        }
+        scope (exit)
+        {
+            free(resolved);
+        }
+        return resolved.fromStringz.idup;
+    }
+
+    /**
      * Repairs, in memory, everything check() marks fixable. Nothing is
      * written until write().
      *
@@ -672,4 +785,122 @@ unittest
     immutable once = q.gitIgnore.content;
     q.fix();
     assert(q.gitIgnore.content == once);
+}
+
+// --- checkDisk() ---------------------------------------------------------------
+
+version (unittest)
+{
+    /// Runs git with `args`, failing the test if it fails.
+    private void git(string[] args...)
+    {
+        import std.process : execute;
+
+        const r = execute(["git"] ~ args);
+        assert(r.status == 0, r.output);
+    }
+}
+
+/// Real nested repos with the listed remote have no findings, including
+/// through a symlinked parent and with a name containing a space.
+unittest
+{
+    import std.file : symlink, write;
+
+    immutable directory = testDirectory("parentDirectory-disk-clean");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    immutable real_ = buildPath(directory, "real");
+    git("init", "-q", buildPath(real_, "alpha"));
+    git("-C", buildPath(real_, "alpha"), "remote", "add", "origin", "git@github.com:pflagerd/alpha.git");
+    git("init", "-q", buildPath(real_, "My Repo"));
+    git("-C", buildPath(real_, "My Repo"), "remote", "add", "upstream", "/srv/git/my repo.git");
+    buildPath(real_, ".gitrepos").write(
+        "/My%20Repo/ /srv/git/my%20repo.git\n/alpha/ git@github.com:pflagerd/alpha.git\n");
+
+    assert(new ParentDirectory(real_).checkDisk.length == 0);
+
+    immutable link = buildPath(directory, "link");
+    real_.symlink(link);
+    assert(new ParentDirectory(link).checkDisk.length == 0);
+}
+
+/// Each kind of problem is reported once per directory, in file order.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.file : mkdir, write;
+
+    immutable directory = testDirectory("parentDirectory-disk-problems");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    buildPath(directory, "file").write("not a directory\n");
+    buildPath(directory, "plain").mkdir;
+    git("init", "-q", buildPath(directory, "other"));
+    git("-C", buildPath(directory, "other"), "remote", "add", "origin", "other.git");
+    buildPath(directory, ".gitrepos").write(
+        "/missing/ m.git\n/file/ f.git\n/plain/ p.git\n/other/ wanted.git\n/missing/ again.git\n");
+
+    const findings = new ParentDirectory(directory).checkDisk;
+    assert(findings.length == 4);
+    assert(findings[0].directory == "/missing/" && findings[0].message.canFind("does not exist"));
+    assert(findings[1].directory == "/file/" && findings[1].message.canFind("not a directory"));
+    assert(findings[2].directory == "/plain/" && findings[2].message.canFind("not a git repository")
+        && findings[2].message.canFind("fatal:")); // git's own message
+    assert(findings[3].directory == "/other/" && findings[3].message.canFind("no remote")
+        && findings[3].message.canFind("wanted.git"));
+    foreach (f; findings)
+    {
+        assert(!f.fixable);
+    }
+}
+
+/// A plain folder inside a repository is not mistaken for a nested repo.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.file : mkdir, write;
+
+    immutable directory = testDirectory("parentDirectory-disk-inside");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    git("init", "-q", directory); // the parent itself is a repository
+    buildPath(directory, "alpha").mkdir;
+    buildPath(directory, ".gitrepos").write("/alpha/ a.git\n");
+
+    const findings = new ParentDirectory(directory).checkDisk;
+    assert(findings.length == 1);
+    assert(findings[0].message.canFind("inside the repository at"));
+}
+
+/// Any remote may carry the url, not only origin; a repo with no remotes fails.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.file : write;
+
+    immutable directory = testDirectory("parentDirectory-disk-remotes");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    git("init", "-q", buildPath(directory, "alpha"));
+    git("-C", buildPath(directory, "alpha"), "remote", "add", "origin", "first.git");
+    git("-C", buildPath(directory, "alpha"), "remote", "add", "backup", "second.git");
+    git("init", "-q", buildPath(directory, "beta"));
+    buildPath(directory, ".gitrepos").write("/alpha/ second.git\n/beta/ b.git\n");
+
+    const findings = new ParentDirectory(directory).checkDisk;
+    assert(findings.length == 1);
+    assert(findings[0].directory == "/beta/" && findings[0].message.canFind("no remote"));
 }
