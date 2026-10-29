@@ -65,5 +65,8 @@ Teaching them what you're doing comes first. Speed comes second.
   Kubuntu machine. Write plans and decisions to `docs/` in the repo
   (create it when first needed), not only in chat, so the other
   environment can pick them up.
+- Work directly on `master`: commit and push there, and don't create
+  feature branches unless the owner asks for one. (A cloud session may be
+  started with a branch name of its own; work on `master` anyway.)
 - Before finishing, make sure work is committed and pushed, and say which
   branch it's on.

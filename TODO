@@ -1,5 +1,6 @@
-Where we left off (resume here): steps 1-6 below are done, and branch
-gitignore-serialization was fast-forward merged into master, which closed
+Where we left off (resume here): work happens directly on master now (see
+CLAUDE.md). Steps 1-6 below are done; they were developed on branch
+gitignore-serialization and fast-forward merged into master, which closed
 #2 #3 #5 #8 #9 #10; #6 was closed by hand (checkDisk covers it). Next:
 - The README was reviewed end to end (#13, closed).
 - The remaining work is tracked as GitHub issues, listed in README.md under
