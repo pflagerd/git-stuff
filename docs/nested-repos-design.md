@@ -29,6 +29,7 @@ only, where file systems are case-sensitive.
 | `GitRepos` | `gitRepos.d` | One `.gitrepos` file |
 | `ParentDirectory` | `parentDirectory.d` | A directory holding nested repos, with its `GitIgnore` and `GitRepos` |
 | `Finding` (struct) | `finding.d` | One problem reported by any class's `check()` |
+| (functions) | `textFile.d` | Shared file handling: `readIfExists`, `splitFileLines` (`\n` only, final newline remembered), `writeAtomically` (temporary file + rename, permissions kept) |
 
 `GitIgnore` and `GitRepos` do not know about each other: neither imports the
 other. Anything that needs both files lives in `ParentDirectory`. This keeps

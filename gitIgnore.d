@@ -16,11 +16,11 @@
  */
 module gitIgnore;
 
-import std.array : split;
 import std.conv : to;
-import std.file : exists, readText;
+import std.file : exists;
 
 import finding : Finding;
+import textFile : readIfExists, splitFileLines, writeAtomically;
 
 /// The marker lines. A line is a marker only if it is exactly this text.
 enum beginMarker = "# BEGIN nested repos (managed by add-nested)";
@@ -55,7 +55,7 @@ class GitIgnore
         this.path = path;
 
         bool finalNewline;
-        const lines = splitFileLines(path.exists ? path.readText : "", finalNewline);
+        const lines = splitFileLines(readIfExists(path), finalNewline);
         endsWithNewline = finalNewline;
         auto parts = parse(lines);
 
@@ -156,73 +156,19 @@ class GitIgnore
 
     /**
      * Writes content() to `toPath`, or by default to the path it was read
-     * from.
-     *
-     * The text goes to a temporary file in the same directory, which is then
-     * renamed over the target, so an interrupted write never leaves her a
-     * truncated .gitignore: POSIX rename() replaces the target in one step
-     * (https://pubs.opengroup.org/onlinepubs/9799919799/functions/rename.html).
-     * An existing target's permission bits are kept. A file that doesn't
-     * exist and would be empty is not created.
+     * from, using textFile.writeAtomically (temporary file, then rename;
+     * permissions kept). A file that doesn't exist and would be empty is not
+     * created.
      */
     void write(string toPath = null) const
     {
-        import std.conv : octal;
-        import std.file : getAttributes, remove, rename, setAttributes;
-        import std.file : writeFile = write;
-        import std.path : baseName, buildPath, dirName;
-        import std.process : thisProcessID;
-
         immutable target = toPath is null ? path : toPath;
         immutable text = content();
         if (text.length == 0 && !target.exists)
         {
             return;
         }
-
-        // Hidden, and in the same directory so rename() stays on one file system.
-        immutable temporary = buildPath(target.dirName,
-            "." ~ target.baseName ~ ".tmp." ~ thisProcessID.to!string);
-        scope (failure)
-        {
-            if (temporary.exists)
-            {
-                temporary.remove;
-            }
-        }
-
-        writeFile(temporary, text);
-        if (target.exists)
-        {
-            temporary.setAttributes(target.getAttributes & octal!7777);
-        }
-        rename(temporary, target);
-    }
-
-    /**
-     * Splits file text into lines on '\n' only, as git does; a '\r' stays
-     * part of its line, so it is written back unchanged.
-     *
-     * `endsWithNewline` is set to whether the text ended in '\n'. Empty text
-     * counts as ending in one, so a file created from nothing ends the usual
-     * way.
-     */
-    static string[] splitFileLines(string text, out bool endsWithNewline) @safe pure
-    {
-        if (text.length == 0)
-        {
-            endsWithNewline = true;
-            return [];
-        }
-
-        auto lines = text.split("\n");
-        // "a\nb\n" splits to ["a", "b", ""]; the trailing "" marks the newline.
-        endsWithNewline = lines[$ - 1].length == 0;
-        if (endsWithNewline)
-        {
-            lines = lines[0 .. $ - 1];
-        }
-        return lines;
+        writeAtomically(target, text);
     }
 
     /// The three parts of a parsed file.
@@ -309,33 +255,6 @@ class GitIgnore
     }
 }
 
-// --- splitFileLines() --------------------------------------------------
-
-/// Final newline present, absent, and the empty file.
-unittest
-{
-    bool nl;
-    assert(GitIgnore.splitFileLines("a\nb\n", nl) == ["a", "b"] && nl);
-    assert(GitIgnore.splitFileLines("a\nb", nl) == ["a", "b"] && !nl);
-    assert(GitIgnore.splitFileLines("", nl).length == 0 && nl);
-}
-
-/// Blank lines are kept, including a blank last line before the newline.
-unittest
-{
-    bool nl;
-    assert(GitIgnore.splitFileLines("a\n\nb\n\n", nl) == ["a", "", "b", ""] && nl);
-    assert(GitIgnore.splitFileLines("\n", nl) == [""] && nl);
-}
-
-/// Only '\n' splits: '\r' stays in the line, so CRLF survives a round trip.
-unittest
-{
-    bool nl;
-    assert(GitIgnore.splitFileLines("a\r\nb\r\n", nl) == ["a\r", "b\r"] && nl);
-    assert(GitIgnore.splitFileLines("a\rb\n", nl) == ["a\rb"] && nl);
-}
-
 // --- parse() -----------------------------------------------------------
 
 /// No block: everything is `before`.
@@ -416,22 +335,9 @@ unittest
 
 version (unittest)
 {
-    import std.file : mkdirRecurse, rmdirRecurse, tempDir;
+    import std.file : rmdirRecurse;
     import std.path : buildPath;
-    import std.process : thisProcessID;
-
-    /// A fresh, empty directory for one test; remove it with rmdirRecurse.
-    private string testDirectory(string name)
-    {
-        immutable directory = buildPath(tempDir,
-            "gitIgnore-test-" ~ thisProcessID.to!string ~ "-" ~ name);
-        if (directory.exists)
-        {
-            directory.rmdirRecurse;
-        }
-        directory.mkdirRecurse;
-        return directory;
-    }
+    import textFile : testDirectory;
 
     /// A GitIgnore read from a file holding `text`.
     private GitIgnore fromText(string directory, string text)
@@ -562,22 +468,6 @@ unittest
     auto g = new GitIgnore(buildPath(directory, ".gitignore"));
     g.write();
     assert(!g.path.exists);
-}
-
-/// An existing file's permission bits survive the rename.
-unittest
-{
-    import std.conv : octal;
-    import std.file : getAttributes, setAttributes;
-
-    immutable directory = testDirectory("write-mode");
-    scope (exit) directory.rmdirRecurse;
-
-    auto g = fromText(directory, "*.o\n");
-    g.path.setAttributes(octal!600);
-    g.nested ~= "/alpha/";
-    g.write();
-    assert((g.path.getAttributes & octal!7777) == octal!600);
 }
 
 // --- round trip ----------------------------------------------------------
