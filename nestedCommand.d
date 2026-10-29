@@ -227,8 +227,9 @@ version (unittest)
     import textFile : testDirectory;
 
     /// Runs `body` with `output` and `errors` going to files in `directory`,
-    /// and returns what was written to each.
-    private string[2] captured(string directory, scope void delegate(File, File) body)
+    /// and returns what was written to each. (Test builds only; the commands'
+    /// tests use it too.)
+    string[2] captured(string directory, scope void delegate(File, File) body)
     {
         immutable outPath = buildPath(directory, "output");
         immutable errPath = buildPath(directory, "errors");
@@ -408,8 +409,9 @@ unittest
 
 version (unittest)
 {
-    /// Runs git with `args`, failing the test if it fails.
-    private void git(string[] args...)
+    /// Runs git with `args`, failing the test if it fails. (Test builds only;
+    /// the commands' tests use it too.)
+    void git(string[] args...)
     {
         import std.process : execute;
 

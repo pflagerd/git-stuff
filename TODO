@@ -5,8 +5,14 @@ Done: GitIgnore (gitIgnore.d), GitRepos (gitRepos.d) and ParentDirectory
 check the nested repos on disk; Finding (finding.d) and textFile.d support
 them.
 
-Next: do the add-nested or pull-nested logic on top of ParentDirectory and write the files out.
-The proposal is in docs/nested-commands-proposal.md; all its decisions are made.
+Next: the commands in docs/nested-commands-proposal.md (all its decisions are made), in steps:
+1. nestedCommand.d (shared) - done.
+2. check-nested - done.
+3. remove-nested.
+4. add-nested <directory>...
+5. pull-nested.
+6. add-nested --clone.
+7. Clean-up: point bin/add-nested and bin/pull-nested at the new code, delete add_nested.d, pull_nested.d and test_add_nested.py, drop python3-pytest from setup.sh, update the README, close #2 #3 #5 #8 #9 #10.
 
 Replace the Python scripts with D, or delete them. Draft plan, to be decided per file:
 - test_add_nested.py: delete once the D tests for add-nested exist; its comment matrix of cases is a checklist for them.

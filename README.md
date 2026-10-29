@@ -80,8 +80,9 @@ exits non-zero.
 make
 ```
 
-This builds `bin/add-nested` and `bin/pull-nested` with debug output
-compiled in. Unit tests are not compiled into them; `make test` runs those. `make clean` removes them. `bin/.gitignore` keeps the
+This builds `bin/add-nested`, `bin/pull-nested` and `bin/check-nested` with
+debug output compiled in. Unit tests are not compiled into them; `make test`
+runs those. `make clean` removes them. `bin/.gitignore` keeps the
 built programs out of git.
 
 The compiler is set by the `DC` variable, which defaults to `ldmd2`: the
@@ -93,6 +94,21 @@ Ubuntu; available from [dlang.org](https://dlang.org/download.html)):
 ```bash
 make DC=dmd
 ```
+
+### `check-nested [-C <directory>] [--fix]`
+
+Reports problems with a parent directory's `.gitignore` and `.gitrepos`, and
+with the nested repos they list, as `warning:` lines on standard error. It
+never uses the network. It prints nothing when there's nothing to report.
+
+- `-C <directory>`: check that parent directory instead of the current one.
+- `--fix`: first repair what can be repaired (sort, de-duplicate, move nested
+  repo lines into the managed block, add missing block entries), write both
+  files, and print `fixed N problem(s)`.
+
+Exit status: 0 no problems, 1 problems remain, 2 bad usage or a file that
+can't be read. Source: `checkNested.d`, on top of the classes described in
+`docs/nested-repos-design.md`.
 
 ### `add-nested <directory | url> ...`
 
@@ -189,12 +205,17 @@ from `docs/nested-repos-design.md`:
 - `parentDirectory.d`: the `ParentDirectory` class, which reads, writes, adds
   to, removes from, checks and fixes both files of a directory together, and
   checks the nested repos on disk.
-- `nestedCommand.d`: what the coming commands share: exit statuses, option
-  parsing, printing findings, the branch rules and a few git queries.
+- `checkNested.d`: the `check-nested` command, tested in-process through its
+  `run()` function.
+- `nestedCommand.d`: what the commands share: exit statuses, option parsing,
+  printing findings, the branch rules and a few git queries.
 - `finding.d`: the `Finding` struct that checks return.
 - `textFile.d`: the shared reading and atomic writing.
 
-Nothing uses them yet.
+After the unit tests, `make test` builds each new command (the `COMMANDS`
+list in the `Makefile`) and checks that `--help` exits 0 and an unknown
+option exits 2, which covers the one-line `main()` the in-process tests
+leave out.
 
 `test_add_nested.py` lists the planned test cases for `add-nested` in comments.
 One case is written so far, and it clones `git@github.com:pflagerd/a.git`, so

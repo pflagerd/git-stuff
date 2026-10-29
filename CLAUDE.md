@@ -45,7 +45,8 @@ Teaching them what you're doing comes first. Speed comes second.
   holds the planned work. Read both at the start of a session.
 - The repo has three kinds of code:
   - D programs (`*.d`) built with `make` (LDC's `ldmd2` by default, via
-    the `DC` variable) into `bin/add-nested` and `bin/pull-nested`.
+    the `DC` variable) into `bin/add-nested`, `bin/pull-nested` and
+    `bin/check-nested`.
     `make setup` (`setup.sh`) installs the required packages.
   - Bash helpers in `bin/`, alongside some committed prebuilt binaries
     (e.g. `bin/pull-desktop-repos`, `bin/template`).
