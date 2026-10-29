@@ -20,6 +20,8 @@ import std.array : split;
 import std.conv : to;
 import std.file : exists, readText;
 
+import finding : Finding;
+
 /// The marker lines. A line is a marker only if it is exactly this text.
 enum beginMarker = "# BEGIN nested repos (managed by add-nested)";
 /// ditto
@@ -67,7 +69,8 @@ class GitIgnore
 
     /**
      * The file text write() would produce: `before`, then the managed block
-     * with `nested` sorted, then `after`, joined with '\n'.
+     * with `nested` sorted and duplicates dropped, then `after`, joined with
+     * '\n'.
      *
      * The block is left out when `nested` is empty, so removing the last
      * nested repo removes the block. When the block is the last thing in the
@@ -82,7 +85,7 @@ class GitIgnore
         string[] lines = before.dup;
         if (nested.length)
         {
-            lines ~= beginMarker ~ nested.dup.sort.release ~ endMarker;
+            lines ~= beginMarker ~ sortedUnique(nested) ~ endMarker;
         }
         lines ~= after;
 
@@ -92,6 +95,63 @@ class GitIgnore
         }
         immutable blockIsLast = nested.length && after.length == 0;
         return lines.join("\n") ~ (endsWithNewline || blockIsLast ? "\n" : "");
+    }
+
+    /**
+     * Problems with the managed block. Nothing is changed.
+     *
+     * - The block is not sorted (fixable: write() sorts it).
+     * - An entry appears more than once (fixable: write() drops repeats).
+     * - An entry is not of the form `/directory/` (not fixable: rewriting it
+     *   would be a guess about what she meant).
+     */
+    Finding[] check() const @safe pure
+    {
+        import std.algorithm.sorting : isSorted;
+
+        Finding[] findings;
+
+        if (!nested.isSorted)
+        {
+            findings ~= Finding("", path ~ ": the managed block is not sorted", true);
+        }
+
+        bool[string] seen;
+        foreach (entry; nested)
+        {
+            if (entry in seen)
+            {
+                findings ~= Finding(entry,
+                    path ~ ": " ~ entry ~ " appears more than once in the managed block", true);
+            }
+            seen[entry] = true;
+
+            if (!isDirectoryPattern(entry))
+            {
+                findings ~= Finding(entry,
+                    path ~ ": '" ~ entry ~ "' in the managed block is not of the form /directory/",
+                    false);
+            }
+        }
+
+        return findings;
+    }
+
+    /// Whether `entry` looks like `/directory/` (or `/a/b/`): a leading and
+    /// trailing slash with something between them.
+    static bool isDirectoryPattern(string entry) @safe pure nothrow @nogc
+    {
+        return entry.length > 2 && entry[0] == '/' && entry[$ - 1] == '/';
+    }
+
+    /// A sorted copy of `entries` with repeats removed.
+    static string[] sortedUnique(const string[] entries) @safe pure
+    {
+        import std.algorithm.iteration : uniq;
+        import std.algorithm.sorting : sort;
+        import std.array : array;
+
+        return entries.dup.sort.uniq.array;
     }
 
     /**
@@ -583,10 +643,70 @@ unittest
 
     // An unsorted block comes back sorted.
     assert(through(b ~ "\n/beta/\n/alpha/\n" ~ e ~ "\n") == b ~ "\n/alpha/\n/beta/\n" ~ e ~ "\n");
+    // Repeated block entries are dropped.
+    assert(through(b ~ "\n/beta/\n/alpha/\n/beta/\n" ~ e ~ "\n") == b ~ "\n/alpha/\n/beta/\n" ~ e ~ "\n");
     // Blank lines inside the block are dropped.
     assert(through(b ~ "\n/alpha/\n\n/beta/\n" ~ e ~ "\n") == b ~ "\n/alpha/\n/beta/\n" ~ e ~ "\n");
     // An empty block is removed.
     assert(through("*.o\n" ~ b ~ "\n" ~ e ~ "\ntmp/\n") == "*.o\ntmp/\n");
     // A block at the very end gains a final newline.
     assert(through("*.o\n" ~ b ~ "\n/alpha/\n" ~ e) == "*.o\n" ~ b ~ "\n/alpha/\n" ~ e ~ "\n");
+}
+
+// --- check() -------------------------------------------------------------
+
+/// A sorted block of /directory/ entries has no findings.
+unittest
+{
+    immutable directory = testDirectory("check-clean");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory, beginMarker ~ "\n/alpha/\n/tools/beta/\n" ~ endMarker ~ "\n");
+    assert(g.check.length == 0);
+    assert(fromText(directory, "*.o\n").check.length == 0); // no block at all
+}
+
+/// Each kind of problem is reported, with the right fixable flag.
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable directory = testDirectory("check-problems");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto g = fromText(directory,
+        beginMarker ~ "\n/beta/\n/alpha/\n/beta/\nalpha\n/gamma\n" ~ endMarker ~ "\n");
+    const findings = g.check;
+    assert(findings.length == 4);
+
+    assert(findings[0].directory == "" && findings[0].fixable
+        && findings[0].message.canFind("not sorted"));
+    assert(findings[1].directory == "/beta/" && findings[1].fixable
+        && findings[1].message.canFind("more than once"));
+    assert(findings[2].directory == "alpha" && !findings[2].fixable
+        && findings[2].message.canFind("not of the form /directory/"));
+    assert(findings[3].directory == "/gamma" && !findings[3].fixable);
+
+    foreach (f; findings)
+    {
+        assert(f.message.canFind(g.path)); // every message names the file
+    }
+}
+
+/// isDirectoryPattern accepts /x/ forms only.
+unittest
+{
+    assert(GitIgnore.isDirectoryPattern("/alpha/"));
+    assert(GitIgnore.isDirectoryPattern("/a/b/"));
+    assert(!GitIgnore.isDirectoryPattern("alpha"));
+    assert(!GitIgnore.isDirectoryPattern("/alpha"));
+    assert(!GitIgnore.isDirectoryPattern("alpha/"));
+    assert(!GitIgnore.isDirectoryPattern("//"));
+    assert(!GitIgnore.isDirectoryPattern("/alpha/\r")); // CRLF line: '\r' is part of it
 }

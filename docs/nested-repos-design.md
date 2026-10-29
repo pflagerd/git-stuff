@@ -28,6 +28,7 @@ only, where file systems are case-sensitive.
 | `GitIgnore` | `gitIgnore.d` | One `.gitignore` file |
 | `GitRepos` | `gitRepos.d` | One `.gitrepos` file |
 | `ParentDirectory` | `parentDirectory.d` | A directory holding nested repos, with its `GitIgnore` and `GitRepos` |
+| `Finding` (struct) | `finding.d` | One problem reported by any class's `check()` |
 
 `GitIgnore` and `GitRepos` do not know about each other: neither imports the
 other. Anything that needs both files lives in `ParentDirectory`. This keeps
@@ -106,8 +107,8 @@ used. Only `nested` is ever sorted.
   refuse with a clear error. Guessing could rewrite her `.gitignore` wrongly.
 - **Nothing to write:** `write()` does not create a new file that would be
   empty.
-- **Written as:** `before`, BEGIN marker, `nested` (sorted), END marker,
-  `after`, joined with `\n`. `content()` returns that text without writing it.
+- **Written as:** `before`, BEGIN marker, `nested` (sorted, duplicates
+  dropped), END marker, `after`, joined with `\n`. `content()` returns that text without writing it.
 - **Empty block:** left out when `nested` is empty, so removing the last
   nested repo removes the block.
 - **Final newline:** when the block is the last thing in the file, the file
@@ -115,15 +116,21 @@ used. Only `nested` is ever sorted.
   newline, or lack of one, is kept.
 - **Permissions:** an existing file's permission bits are copied to the
   replacement before the rename.
+- **`check()`** reports, without changing anything: an unsorted block
+  (fixable), an entry appearing more than once (fixable), and an entry not of
+  the form `/directory/` (not fixable: rewriting it would be a guess).
+  Messages name the file's `path`; `directory` is `""` for a whole-file
+  problem. Findings carry no line numbers, because the parsed object doesn't
+  keep them; a malformed block, found while parsing, does report its line.
 
 ### Round trip
 
 Reading a `.gitignore` and writing it back reproduces it byte for byte,
 including CRLF lines, a missing final newline, blank lines, comments and
-escapes, provided any block is already sorted, has no blank lines, is not
-empty, and ends with `\n` if it is the last thing in the file. Otherwise the
-design changes the file on purpose: the block is sorted, blank lines in it
-are dropped, an empty block is removed, and a final newline is added after
+escapes, provided any block is already sorted, has no blank lines or repeated
+entries, is not empty, and ends with `\n` if it is the last thing in the file. Otherwise the
+design changes the file on purpose: the block is sorted, blank lines and
+repeated entries in it are dropped, an empty block is removed, and a final newline is added after
 a block at the end. `gitIgnore.d`'s unit tests check both lists.
 
 The file must be valid UTF-8: D's `readText` rejects anything else, so such
@@ -219,12 +226,12 @@ enough for this tool.
 
 ### Findings
 
-`check()` returns findings instead of printing, so each command decides what
+Every class's `check()` returns findings (`finding.d`) instead of printing, so each command decides what
 to print, its exit status, and whether `--fix` applies. Each finding has:
 
 | Field | Meaning |
 |---|---|
-| `directory` | The nested repo it concerns |
+| `directory` | The nested repo it concerns; `""` for a whole-file problem |
 | `message` | Human-readable description |
 | `fixable` | Whether `--fix` can repair it |
 
