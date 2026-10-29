@@ -1,4 +1,5 @@
 add-nested
 check-nested
 pull-nested
+remove-nested
 *.o

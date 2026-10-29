@@ -80,8 +80,8 @@ exits non-zero.
 make
 ```
 
-This builds `bin/add-nested`, `bin/pull-nested` and `bin/check-nested` with
-debug output compiled in. Unit tests are not compiled into them; `make test`
+This builds `bin/add-nested`, `bin/pull-nested`, `bin/check-nested` and
+`bin/remove-nested` with debug output compiled in. Unit tests are not compiled into them; `make test`
 runs those. `make clean` removes them. `bin/.gitignore` keeps the
 built programs out of git.
 
@@ -109,6 +109,19 @@ never uses the network. It prints nothing when there's nothing to report.
 Exit status: 0 no problems, 1 problems remain, 2 bad usage or a file that
 can't be read. Source: `checkNested.d`, on top of the classes described in
 `docs/nested-repos-design.md`.
+
+### `remove-nested [-C <directory>] [--fix] <nested directory>...`
+
+Removes each nested directory (in any slash form: `alpha`, `/alpha/`, ...)
+from `.gitrepos` and from the managed block of `.gitignore`, printing
+`removed /alpha/ from ...` for each. **It never deletes a directory**; if one
+is still on disk, the message says so. A directory in neither file gets a
+warning, and the others are still removed. The files are only rewritten if
+something changed. Afterwards, any remaining problems with the two files are
+reported as with `check-nested`.
+
+Exit status: 0 done, 1 something wasn't registered or problems remain, 2 bad
+usage or a file that can't be read. Source: `removeNested.d`.
 
 ### `add-nested <directory | url> ...`
 
@@ -205,8 +218,9 @@ from `docs/nested-repos-design.md`:
 - `parentDirectory.d`: the `ParentDirectory` class, which reads, writes, adds
   to, removes from, checks and fixes both files of a directory together, and
   checks the nested repos on disk.
-- `checkNested.d`: the `check-nested` command, tested in-process through its
-  `run()` function.
+- `checkNested.d` and `removeNested.d`: the `check-nested` and
+  `remove-nested` commands, tested in-process through their `run()`
+  functions.
 - `nestedCommand.d`: what the commands share: exit statuses, option parsing,
   printing findings, the branch rules and a few git queries.
 - `finding.d`: the `Finding` struct that checks return.

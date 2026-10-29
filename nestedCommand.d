@@ -10,6 +10,7 @@ module nestedCommand;
 import std.stdio : File;
 
 import finding : Finding;
+import parentDirectory : ParentDirectory;
 
 /// Exit statuses, the same three-way convention as GNU grep.
 enum ExitStatus : int
@@ -74,6 +75,46 @@ Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions common,
         return Parsed(false, ExitStatus.usage);
     }
     return Parsed(true, ExitStatus.ok);
+}
+
+// --- loading ---------------------------------------------------------------------
+
+/**
+ * Loads the ParentDirectory for `directory` into `parent`. On failure prints
+ * why to `errors`, prefixed with `program` and naming the file (and line,
+ * for a parse error), and returns false: the caller exits with
+ * ExitStatus.usage, having changed nothing.
+ */
+bool loadParent(string program, string directory, out ParentDirectory parent, File errors)
+{
+    import std.file : FileException;
+    import std.path : buildPath;
+    import std.utf : UTFException;
+    import gitIgnore : GitIgnoreException;
+    import gitRepos : GitReposException;
+
+    try
+    {
+        parent = new ParentDirectory(directory);
+        return true;
+    }
+    catch (GitIgnoreException e)
+    {
+        errors.writeln(program, ": ", buildPath(directory, ".gitignore"), ": ", e.msg);
+    }
+    catch (GitReposException e)
+    {
+        errors.writeln(program, ": ", buildPath(directory, ".gitrepos"), ": ", e.msg);
+    }
+    catch (UTFException e)
+    {
+        errors.writeln(program, ": a file in ", directory, " is not valid UTF-8: ", e.msg);
+    }
+    catch (FileException e)
+    {
+        errors.writeln(program, ": ", e.msg);
+    }
+    return false;
 }
 
 // --- output --------------------------------------------------------------------

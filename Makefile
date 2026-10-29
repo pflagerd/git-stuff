@@ -11,7 +11,7 @@ DC ?= ldmd2
 DC_PATH := $(or $(shell command -v $(DC) 2>/dev/null),/usr/bin/$(DC))
 
 # The new nested-repo commands, checked by `make test` once built.
-COMMANDS = bin/check-nested
+COMMANDS = bin/check-nested bin/remove-nested
 
 all:\
 	bin/add-nested\
@@ -43,11 +43,14 @@ LIBRARY = nestedCommand.d parentDirectory.d gitIgnore.d gitRepos.d finding.d tex
 bin/check-nested: checkNested.d $(LIBRARY) | $(DC_PATH)
 	$(DC) -wi -gf -debug checkNested.d $(LIBRARY) -of=bin/check-nested
 
+bin/remove-nested: removeNested.d $(LIBRARY) | $(DC_PATH)
+	$(DC) -wi -gf -debug removeNested.d $(LIBRARY) -of=bin/remove-nested
+
 # The unit tests, then a quick check of each built command: --help exits 0
 # and an unknown option exits 2 (main() and the argument plumbing, which the
 # in-process tests don't exercise).
 test: $(COMMANDS) | $(DC_PATH)
-	$(DC) -wi -unittest -main $(LIBRARY) -run checkNested.d
+	$(DC) -wi -unittest -main $(LIBRARY) removeNested.d -run checkNested.d
 	@for c in $(COMMANDS); do \
 	    $$c --help >/dev/null || { echo "$$c --help: expected exit 0" >&2; exit 1; }; \
 	    $$c --no-such-option 2>/dev/null; s=$$?; \

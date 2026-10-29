@@ -9,7 +9,7 @@ module checkNested;
 
 import std.stdio : File;
 
-import nestedCommand : CommonOptions, ExitStatus, parseOptions, printFindings;
+import nestedCommand : CommonOptions, ExitStatus, loadParent, parseOptions, printFindings;
 import parentDirectory : ParentDirectory;
 
 enum usage = "Usage: check-nested [-C <directory>] [--fix]
@@ -43,7 +43,7 @@ int run(string[] args, File output, File errors)
     }
 
     ParentDirectory parent;
-    if (!load(common.directory, parent, errors))
+    if (!loadParent("check-nested", common.directory, parent, errors))
     {
         return ExitStatus.usage;
     }
@@ -72,42 +72,6 @@ int run(string[] args, File output, File errors)
 
     immutable remaining = printFindings(parent.check ~ parent.checkDisk, errors);
     return remaining ? ExitStatus.findings : ExitStatus.ok;
-}
-
-/**
- * Loads the ParentDirectory for `directory` into `parent`. On failure prints
- * why to `errors`, naming the file, and returns false.
- */
-bool load(string directory, out ParentDirectory parent, File errors)
-{
-    import std.file : FileException;
-    import std.path : buildPath;
-    import std.utf : UTFException;
-    import gitIgnore : GitIgnoreException;
-    import gitRepos : GitReposException;
-
-    try
-    {
-        parent = new ParentDirectory(directory);
-        return true;
-    }
-    catch (GitIgnoreException e)
-    {
-        errors.writeln("check-nested: ", buildPath(directory, ".gitignore"), ": ", e.msg);
-    }
-    catch (GitReposException e)
-    {
-        errors.writeln("check-nested: ", buildPath(directory, ".gitrepos"), ": ", e.msg);
-    }
-    catch (UTFException e)
-    {
-        errors.writeln("check-nested: a file in ", directory, " is not valid UTF-8: ", e.msg);
-    }
-    catch (FileException e)
-    {
-        errors.writeln("check-nested: ", e.msg);
-    }
-    return false;
 }
 
 version (unittest)
