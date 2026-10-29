@@ -15,13 +15,19 @@ import parentDirectory : ParentDirectory;
 
 enum usage = "Usage: add-nested [-C <directory>] [--fix] [--branch <name>] [--url <url>]
                   <nested directory>...
+       add-nested [-C <directory>] [--fix] [--branch <name>]
+                  --clone <url> [<nested directory>]
 
 Registers each nested directory (an existing clone, given relative to the
 parent directory) in .gitrepos and in the managed block of .gitignore.
 Every argument is checked first; if any fails, nothing is written.
---branch and --url need exactly one nested directory. Exit status: 0 done,
-1 an argument failed or problems remain, 2 bad usage or a file that can't
-be read.
+--branch and --url need exactly one nested directory.
+
+With --clone, first clones <url> into the nested directory (by default
+the name git clone would choose), which must not exist yet.
+
+Exit status: 0 done, 1 an argument failed or problems remain, 2 bad usage
+or a file that can't be read.
 ";
 
 /**
@@ -33,15 +39,20 @@ be read.
 int run(string[] args, File output, File errors)
 {
     CommonOptions common;
-    string branch, url;
+    string branch, url, clone;
     const parsed = parseOptions(args, common, output, errors, usage,
         "branch", "Record this branch instead of the current one.", &branch,
-        "url", "Record this url instead of the origin remote's.", &url);
+        "url", "Record this url instead of the origin remote's.", &url,
+        "clone", "Clone this url first, then register the clone.", &clone);
     if (!parsed.proceed)
     {
         return parsed.exitStatus;
     }
     immutable arguments = args[1 .. $].idup;
+    if (clone.length)
+    {
+        return cloneAndAdd(common, clone, branch, url, arguments, output, errors);
+    }
     if (arguments.length == 0)
     {
         errors.writeln("add-nested: no nested directory given");
@@ -104,12 +115,19 @@ int run(string[] args, File output, File errors)
         output.writeln("added ", entry.directory, " ", entry.url,
             entry.branch.length ? " " ~ entry.branch : "");
     }
-    output.flush(); // before the warnings that follow on the error stream
+    return checkWritten(common.directory, output, errors);
+}
 
-    // Check the files as written, not the objects in memory: add() appends,
-    // and only write() sorts, so the objects would look unsorted.
+/**
+ * The checks after writing, on the files as written, not the objects in
+ * memory: add() appends, and only write() sorts, so the objects would look
+ * unsorted. Returns: the exit status.
+ */
+int checkWritten(string parentDirectory, File output, File errors)
+{
+    output.flush(); // before the warnings that follow on the error stream
     ParentDirectory written;
-    if (!loadParent("add-nested", common.directory, written, errors))
+    if (!loadParent("add-nested", parentDirectory, written, errors))
     {
         return ExitStatus.findings;
     }
@@ -118,20 +136,129 @@ int run(string[] args, File output, File errors)
 }
 
 /**
- * Works out the .gitrepos entry for `argument`, a nested directory relative
- * to `parentDirectory`. `branch` and `url` are the --branch and --url
- * values ("" when not given).
+ * add-nested --clone <url> [<nested directory>]: everything is checked
+ * before the network is used (the command line, both files, the target
+ * directory), then the clone is made with nestedCommand.cloneNested (as
+ * pull-nested makes them) and registered like an existing clone.
  *
- * Returns: "" and the entry in `entry`, or why there can't be one.
+ * Returns: the exit status.
  */
-string entryFor(string parentDirectory, string argument, string branch, string url,
-    out GitReposEntry entry)
+int cloneAndAdd(CommonOptions common, string url, string branch, string urlOption,
+    const string[] arguments, File output, File errors)
+{
+    import std.file : exists;
+    import std.path : buildPath;
+    import gitCloneDirectoryName : gitCloneDirectoryName, NoDirNameException;
+    import nestedCommand : cloneNested;
+
+    if (urlOption.length)
+    {
+        errors.writeln("add-nested: --clone and --url can't be used together");
+        return ExitStatus.usage;
+    }
+    if (arguments.length > 1)
+    {
+        errors.writeln("add-nested: --clone takes at most one nested directory");
+        return ExitStatus.usage;
+    }
+
+    ParentDirectory parent;
+    if (!loadParent("add-nested", common.directory, parent, errors))
+    {
+        return ExitStatus.usage;
+    }
+
+    string argument;
+    if (arguments.length)
+    {
+        argument = arguments[0];
+    }
+    else
+    {
+        try
+        {
+            argument = gitCloneDirectoryName(url);
+        }
+        catch (NoDirNameException)
+        {
+            errors.writeln("add-nested: can't guess a directory name from '", url,
+                "'; give one after the url");
+            return ExitStatus.findings;
+        }
+    }
+
+    // The same directory rules as for an existing clone, before downloading.
+    immutable directory = GitRepos.normalizeDirectory(argument);
+    string invalid = directoryProblem(argument);
+    if (invalid.length == 0)
+    {
+        auto planned = GitReposEntry(directory, url, branch);
+        immutable problem = GitRepos.validate(planned);
+        invalid = problem is null ? "" : problem;
+    }
+    if (invalid.length)
+    {
+        errors.writeln("add-nested: ", argument, ": ", invalid, "; nothing was cloned");
+        return ExitStatus.findings;
+    }
+    immutable onDisk = buildPath(common.directory, directory[1 .. $ - 1]);
+    if (onDisk.exists)
+    {
+        errors.writeln("add-nested: ", onDisk, " already exists; nothing was cloned"
+            ~ " (to register an existing clone, leave out --clone)");
+        return ExitStatus.findings;
+    }
+
+    immutable failure = cloneNested(onDisk, directory, url, branch, output, errors);
+    if (failure.length)
+    {
+        output.flush();
+        errors.writeln("add-nested: ", directory, ": ", failure,
+            onDisk.exists ? "; the clone is kept but not registered (add-nested "
+                ~ argument ~ " registers it once it's sorted out)" : "");
+        return ExitStatus.findings;
+    }
+
+    // Registered like an existing clone; the url recorded is what git
+    // stored, which for her ssh urls is exactly what she typed.
+    GitReposEntry entry;
+    immutable problem = entryFor(common.directory, argument, branch, "", entry);
+    if (problem.length)
+    {
+        errors.writeln("add-nested: ", argument, ": cloned, but ", problem,
+            "; not registered");
+        return ExitStatus.findings;
+    }
+    if (common.fix)
+    {
+        parent.fix();
+    }
+    parent.add(entry);
+    try
+    {
+        parent.write();
+    }
+    catch (Exception e)
+    {
+        errors.writeln("add-nested: cloned ", onDisk, ", but could not write the files: ",
+            e.msg, " (the clone is kept; add-nested ", argument, " registers it)");
+        return ExitStatus.findings;
+    }
+    output.writeln("added ", entry.directory, " ", entry.url,
+        entry.branch.length ? " " ~ entry.branch : "");
+    return checkWritten(common.directory, output, errors);
+}
+
+/**
+ * The rules for a nested directory argument that don't need the disk: no
+ * "//" (checked before normalizing, which would strip it), something left
+ * after normalizing, and no "." or ".." component. Returns: "" or why not.
+ */
+string directoryProblem(string argument)
 {
     import std.algorithm.searching : canFind;
     import std.array : split;
-    import std.path : buildPath;
 
-    // Checked before normalizing, which would strip the extra slashes.
     if (argument.canFind("//"))
     {
         return "too many slashes in directory '" ~ argument ~ "'";
@@ -145,6 +272,27 @@ string entryFor(string parentDirectory, string argument, string branch, string u
     {
         return "'.' and '..' are not allowed; give the directory relative to the parent";
     }
+    return "";
+}
+
+/**
+ * Works out the .gitrepos entry for `argument`, a nested directory relative
+ * to `parentDirectory`. `branch` and `url` are the --branch and --url
+ * values ("" when not given).
+ *
+ * Returns: "" and the entry in `entry`, or why there can't be one.
+ */
+string entryFor(string parentDirectory, string argument, string branch, string url,
+    out GitReposEntry entry)
+{
+    import std.path : buildPath;
+
+    immutable notDirectory = directoryProblem(argument);
+    if (notDirectory.length)
+    {
+        return notDirectory;
+    }
+    immutable directory = GitRepos.normalizeDirectory(argument);
 
     immutable onDisk = buildPath(parentDirectory, directory[1 .. $ - 1]);
     immutable notRepository = ParentDirectory.repositoryProblem(directory, onDisk);
@@ -497,4 +645,134 @@ unittest
     buildPath(scratch, ".gitrepos").write("/alpha/\n");
     assert(addNested(scratch, scratch, ["alpha"], text) == 2);
     assert(buildPath(scratch, ".gitrepos").readText == "/alpha/\n");
+}
+
+// --- tests: --clone ----------------------------------------------------------------
+
+/// --clone with no directory: the name git clone would choose; default branch
+/// left out.
+unittest
+{
+    immutable scratch = testDirectory("addNested-clone");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(scratch, "alpha", "main", "dev");
+    immutable parent = buildPath(scratch, "parent");
+    parent.mkdirRecurse;
+
+    string[2] text;
+    assert(addNested(scratch, parent, ["--clone", remote], text) == 0, text[1]);
+    assert(currentBranch(buildPath(parent, "alpha")) == "main");
+    assert(files(parent) == ["/alpha/ " ~ remote ~ "\n",
+        beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n"]);
+    assert(text[0] == "added /alpha/ " ~ remote ~ "\n");
+}
+
+/// --clone into a named directory with --branch (#2's shape), and the
+/// directory-name rule without --branch.
+unittest
+{
+    immutable scratch = testDirectory("addNested-clone-named");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(scratch, "blog-bootstrap", "master", "bok-blog", "blog");
+    immutable parent = buildPath(scratch, "parent");
+    parent.mkdirRecurse;
+
+    string[2] text;
+    assert(addNested(scratch, parent, ["--branch", "bok-blog", "--clone", remote, "site"], text) == 0,
+        text[1]);
+    assert(currentBranch(buildPath(parent, "site")) == "bok-blog");
+    assert(files(parent)[0] == "/site/ " ~ remote ~ " bok-blog\n");
+
+    // No --branch: the remote has a branch named after the directory, so the
+    // clone is on it and the branch is left out.
+    assert(addNested(scratch, parent, ["--clone", remote, "blog"], text) == 0, text[1]);
+    assert(currentBranch(buildPath(parent, "blog")) == "blog");
+    assert(files(parent)[0] == "/blog/ " ~ remote ~ "\n/site/ " ~ remote ~ " bok-blog\n");
+}
+
+/// Everything is checked before the network is used: nothing is cloned.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.file : dirEntries, SpanMode;
+    import std.algorithm.searching : count;
+
+    immutable scratch = testDirectory("addNested-clone-checks");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(scratch, "alpha", "main");
+    immutable parent = buildPath(scratch, "parent");
+    buildPath(parent, "taken").mkdirRecurse;
+
+    string[2] text;
+    assert(addNested(scratch, parent, ["--clone", remote, "taken"], text) == 1);
+    assert(text[1].canFind("already exists; nothing was cloned"));
+    assert(addNested(scratch, parent, ["--clone", remote, "../outside"], text) == 1);
+    assert(text[1].canFind("'.' and '..' are not allowed") && text[1].canFind("nothing was cloned"));
+    assert(addNested(scratch, parent, ["--clone", remote, "//alpha"], text) == 1);
+    assert(addNested(scratch, parent, ["--branch", "a//b", "--clone", remote], text) == 1);
+    assert(text[1].canFind("too many slashes in branch"));
+
+    // A malformed .gitrepos stops it too, before cloning.
+    buildPath(parent, ".gitrepos").write("/x/\n");
+    assert(addNested(scratch, parent, ["--clone", remote], text) == 2);
+    buildPath(parent, ".gitrepos").write("");
+
+    assert(dirEntries(parent, SpanMode.shallow).count == 2); // taken/ and .gitrepos only
+    assert(files(parent) == ["", ""]);
+}
+
+/// A failed clone leaves nothing; a failed checkout keeps the clone, unregistered.
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable scratch = testDirectory("addNested-clone-failures");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(scratch, "alpha", "main");
+    immutable parent = buildPath(scratch, "parent");
+    parent.mkdirRecurse;
+
+    string[2] text;
+    assert(addNested(scratch, parent, ["--clone", buildPath(scratch, "nope.git"), "gone"], text) == 1);
+    assert(text[1].canFind("git clone failed") && !buildPath(parent, "gone").exists);
+
+    assert(addNested(scratch, parent, ["--branch", "missing", "--clone", remote], text) == 1);
+    assert(text[1].canFind("could not check out branch 'missing'")
+        && text[1].canFind("the clone is kept but not registered"));
+    assert(buildPath(parent, "alpha").exists);
+    assert(files(parent) == ["", ""]);
+}
+
+/// Command-line mistakes with --clone are usage errors.
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable scratch = testDirectory("addNested-clone-usage");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    string[2] text;
+    assert(addNested(scratch, scratch, ["--clone", "x.git", "a", "b"], text) == 2);
+    assert(text[1].canFind("at most one nested directory"));
+    assert(addNested(scratch, scratch, ["--clone", "x.git", "--url", "y.git"], text) == 2);
+    assert(text[1].canFind("--clone and --url"));
 }

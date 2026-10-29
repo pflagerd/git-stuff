@@ -146,6 +146,16 @@ parent directory (`alpha`, `/alpha/`, `tools/alpha`; no `.` or `..`), in
 - Afterwards, remaining problems with the two files are reported as with
   `check-nested`.
 
+`add-nested [-C <directory>] [--fix] [--branch <name>] --clone <url> [<nested directory>]`
+clones `<url>` first, into the nested directory given or else the one
+`git clone` would choose, then registers it as above. Everything that can be
+checked without the network is checked first (both files, the directory
+rules, and that the directory doesn't exist yet), so a mistake costs no
+download. The clone gets the branch `pull-nested` would give it: `--branch`,
+else a branch named after the directory if the remote has one, else the
+default. If the clone succeeds but the branch can't be checked out, the clone
+is kept, unregistered, and the message says how to register it.
+
 Exit status: 0 done, 1 an argument failed or problems remain, 2 bad usage or
 a file that can't be read. Source: `addNested.d`.
 

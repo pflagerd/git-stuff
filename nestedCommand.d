@@ -259,6 +259,64 @@ string remoteDefaultBranch(string repository)
     return name["origin/".length .. $];
 }
 
+// --- running git -----------------------------------------------------------------
+
+/**
+ * Runs git with `args`, its output going straight to `output` and `errors`
+ * (so progress and messages appear as they happen), and its input from the
+ * terminal (so ssh can still ask for a passphrase). Never through a shell.
+ *
+ * Returns: whether git succeeded.
+ */
+bool runGit(string[] args, File output, File errors)
+{
+    import std.process : Config, spawnProcess, wait;
+    import std.stdio : stdin;
+
+    output.flush(); // so our own lines come before git's
+    errors.flush();
+    // spawnProcess closes, in this process, any File it is given that isn't
+    // our own stdout/stderr (e.g. the files tests capture into), unless told
+    // to retain it: https://dlang.org/phobos/std_process.html#.Config
+    return wait(spawnProcess(["git"] ~ args, stdin, output, errors, null,
+        Config.retainStdout | Config.retainStderr)) == 0;
+}
+
+/**
+ * Clones `url` into `onDisk` (which must not exist) and checks out the
+ * branch branchAfterClone gives for the nested `directory` and
+ * `listedBranch`. With no branch listed and a directory named differently
+ * from the clone name, but no such branch on the remote, it notes on
+ * `output` that the clone stays on the default branch. add-nested --clone
+ * and pull-nested both clone this way.
+ *
+ * Returns: "" on success, else what went wrong. If the clone itself failed,
+ * git leaves nothing behind; if only the checkout failed, the clone stays.
+ */
+string cloneNested(string onDisk, string directory, string url, string listedBranch,
+    File output, File errors)
+{
+    if (!runGit(["clone", url, onDisk], output, errors))
+    {
+        return "git clone failed";
+    }
+    immutable target = branchAfterClone(directory, url, listedBranch,
+        (string b) => remoteHasBranch(onDisk, b));
+    if (target.length && currentBranch(onDisk) != target)
+    {
+        if (!runGit(["-C", onDisk, "checkout", "--quiet", target], output, errors))
+        {
+            return "cloned, but could not check out branch '" ~ target ~ "'";
+        }
+    }
+    else if (target.length == 0 && listedBranch.length == 0 && namesDiffer(directory, url))
+    {
+        output.writeln("no branch \"", lastComponent(directory),
+            "\" on the remote; staying on ", currentBranch(onDisk));
+    }
+    return "";
+}
+
 // --- tests: options ------------------------------------------------------------
 
 version (unittest)

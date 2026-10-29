@@ -11,7 +11,7 @@ Next: the commands in docs/nested-commands-proposal.md (all its decisions are ma
 3. remove-nested - done.
 4. add-nested <directory>... - done; it replaces the old bin/add-nested, and add_nested.d and test_add_nested.py are deleted.
 5. pull-nested - done; it replaces the old bin/pull-nested, and pull_nested.d is deleted.
-6. add-nested --clone.
+6. add-nested --clone - done.
 7. Clean-up: review the README end to end, and merge to master so the Fixes lines close #2 #3 #5 #8 #9 #10.
 
 Replace the Python scripts with D, or delete them. Draft plan, to be decided per file:

@@ -9,9 +9,9 @@ module pullNested;
 import std.stdio : File;
 
 import gitRepos : GitReposEntry;
-import nestedCommand : branchAfterClone, CommonOptions, currentBranch, ExitStatus,
-    lastComponent, loadParent, namesDiffer, parseOptions, printFindings,
-    remoteDefaultBranch, remoteHasBranch;
+import nestedCommand : branchAfterClone, cloneNested, CommonOptions, currentBranch,
+    ExitStatus, loadParent, parseOptions, printFindings, remoteDefaultBranch,
+    remoteHasBranch, runGit;
 import parentDirectory : ParentDirectory;
 
 enum usage = "Usage: pull-nested [-C <directory>] [--fix]
@@ -103,26 +103,12 @@ bool pullOne(string parentDirectory, const GitReposEntry entry, File output, Fil
 
     if (!onDisk.exists)
     {
-        if (!git(["clone", entry.url, onDisk], output, errors))
+        immutable failure = cloneNested(onDisk, entry.directory, entry.url, entry.branch,
+            output, errors);
+        if (failure.length)
         {
-            problem("git clone failed");
+            problem(failure);
             return false;
-        }
-        immutable target = branchAfterClone(entry.directory, entry.url, entry.branch,
-            (string b) => remoteHasBranch(onDisk, b));
-        if (target.length && currentBranch(onDisk) != target)
-        {
-            if (!git(["-C", onDisk, "checkout", "--quiet", target], output, errors))
-            {
-                problem("cloned, but could not check out branch '" ~ target ~ "'");
-                return false;
-            }
-        }
-        else if (target.length == 0 && entry.branch.length == 0
-            && namesDiffer(entry.directory, entry.url))
-        {
-            output.writeln("no branch \"", lastComponent(entry.directory),
-                "\" on the remote; staying on ", currentBranch(onDisk));
         }
         return true;
     }
@@ -151,33 +137,12 @@ bool pullOne(string parentDirectory, const GitReposEntry entry, File output, Fil
         ok = false;
     }
 
-    if (!git(["-C", onDisk, "pull", "--ff-only"], output, errors))
+    if (!runGit(["-C", onDisk, "pull", "--ff-only"], output, errors))
     {
         problem("git pull --ff-only failed; nothing was changed in this repo");
         return false;
     }
     return ok;
-}
-
-/**
- * Runs git with `args`, its output going straight to `output` and `errors`
- * (so progress and messages appear as they happen), and its input from the
- * terminal (so ssh can still ask for a passphrase). Never through a shell.
- *
- * Returns: whether git succeeded.
- */
-bool git(string[] args, File output, File errors)
-{
-    import std.process : Config, spawnProcess, wait;
-    import std.stdio : stdin;
-
-    output.flush(); // so our own lines come before git's
-    errors.flush();
-    // spawnProcess closes, in this process, any File it is given that isn't
-    // our own stdout/stderr (e.g. the files tests capture into), unless told
-    // to retain it: https://dlang.org/phobos/std_process.html#.Config
-    return wait(spawnProcess(["git"] ~ args, stdin, output, errors, null,
-        Config.retainStdout | Config.retainStderr)) == 0;
 }
 
 version (unittest)
