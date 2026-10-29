@@ -43,7 +43,11 @@ directory (e.g. a Desktop folder) that groups repos.
 
 - **Reading happens in the constructor.** A constructed object always holds a
   fully parsed file; there is no separate `deserialize()` and no
-  "constructed but not yet read" state.
+  "constructed but not yet read" state. `GitIgnore` also has a second
+  constructor that builds it from parts already in memory (`path`, `before`,
+  `nested`, `after`, `endsWithNewline`), copying them; `ParentDirectory.fix()`
+  uses it, because changing an immutable `before` or `after` means a new
+  object.
 - **The constructor takes an optional path.** Default: the file of that name
   in the current directory (`.gitignore`, `.gitrepos`). A missing file is not
   an error; it reads as empty.
@@ -247,7 +251,7 @@ but it costs nothing and is already correct if she later runs `git init`.
 | `add(entry)` | Adds the entry to `.gitrepos` (replacing any for the same directory), then the directory pattern to the `.gitignore` block if not already there. `.gitrepos` goes first because it validates: if it throws, neither file has changed. |
 | `remove(directory)` | Removes the directory from both (normalized, so `"alpha"` works); returns whether either file had it. **Never touches the directory on disk.** Deleting is the one irreversible action here, and it stays out of this class. |
 | `check()` | Returns a list of findings; prints nothing |
-| `fix()` | Builds corrected `GitIgnore` / `GitRepos` objects for the fixable findings |
+| `fix()` | Repairs, in memory, everything `check()` marks fixable: builds a new `GitIgnore` without the loose lines (every other line kept exactly) and with their directories in the block; adds `.gitrepos` directories missing from the block; sorts and de-duplicates the block and sorts `.gitrepos`. Returns `check()` afterwards: the findings she still has to deal with, none fixable. Nothing is written until `write()`. |
 | `write()` | Writes `.gitrepos` then `.gitignore`, each atomically |
 
 The pair of writes is not atomic: a crash between them can leave the files

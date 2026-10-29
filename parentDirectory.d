@@ -163,6 +163,60 @@ class ParentDirectory
     }
 
     /**
+     * Repairs, in memory, everything check() marks fixable. Nothing is
+     * written until write().
+     *
+     * - Loose lines: a new GitIgnore is built without them in `before` and
+     *   `after` (every other line, comments and blank lines included, stays
+     *   exactly as it was), and their directories go into the block.
+     * - .gitrepos directories missing from the block are added to it.
+     * - The block is sorted and de-duplicated, and .gitrepos is sorted by
+     *   directory (stably), so check() afterwards reports only what is left.
+     *
+     * Returns: check() after fixing, i.e. the findings she still has to
+     * deal with, none of them fixable.
+     */
+    Finding[] fix()
+    {
+        import std.algorithm.iteration : filter, map;
+        import std.algorithm.mutation : SwapStrategy;
+        import std.algorithm.searching : canFind;
+        import std.algorithm.sorting : sort;
+        import std.array : array;
+
+        bool[string] inRepos;
+        foreach (e; gitRepos_.entries)
+        {
+            inRepos[e.directory] = true;
+        }
+
+        string[] moved;
+        bool keep(string line)
+        {
+            immutable directory = looseDirectory(line);
+            if (directory.length && directory in inRepos)
+            {
+                moved ~= directory;
+                return false;
+            }
+            return true;
+        }
+
+        immutable before = gitIgnore_.before.filter!(l => keep(l)).array;
+        immutable after = gitIgnore_.after.filter!(l => keep(l)).array;
+        string[] nested = gitIgnore_.nested ~ moved ~ gitRepos_.entries
+            .filter!(e => !gitIgnore_.nested.canFind(e.directory))
+            .map!(e => e.directory).array;
+
+        gitIgnore_ = new GitIgnore(gitIgnore_.path, before,
+            GitIgnore.sortedUnique(nested), after, gitIgnore_.endsWithNewline);
+
+        gitRepos_.entries.sort!((a, b) => a.directory < b.directory, SwapStrategy.stable);
+
+        return check();
+    }
+
+    /**
      * The "/alpha/" form of a .gitignore line if it could name a directory
      * (adding any missing leading or trailing slash), or "" if it can't:
      * empty, a comment, a negation, a wildcard, a doubled slash, or
@@ -522,4 +576,100 @@ unittest
     auto p = withFiles(directory, beginMarker ~ "\nalpha\n" ~ endMarker ~ "\n", "");
     const findings = p.check;
     assert(findings.length == 1 && !findings[0].fixable); // GitIgnore's "not of the form"
+}
+
+// --- fix() -------------------------------------------------------------------
+
+/// Loose lines move into the block; every other line stays exactly as it was.
+unittest
+{
+    import gitIgnore : beginMarker, endMarker;
+
+    immutable directory = testDirectory("parentDirectory-fix-loose");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto p = withFiles(directory,
+        "# build\n*.o\nalpha\n\n" ~ beginMarker ~ "\n/beta/\n" ~ endMarker ~ "\n/gamma/\ntmp/\n",
+        "/alpha/ a.git\n/beta/ b.git\n/gamma/ c.git\n");
+    assert(p.fix.length == 0);
+    assert(p.gitIgnore.before == ["# build", "*.o", ""]);
+    assert(p.gitIgnore.nested == ["/alpha/", "/beta/", "/gamma/"]);
+    assert(p.gitIgnore.after == ["tmp/"]);
+
+    p.write();
+    assert(buildPath(directory, ".gitignore").readText ==
+        "# build\n*.o\n\n" ~ beginMarker ~ "\n/alpha/\n/beta/\n/gamma/\n" ~ endMarker ~ "\ntmp/\n");
+    assert(new ParentDirectory(directory).check.length == 0); // fixed on disk too
+}
+
+/// Missing block entries are added; a file with no block gets one.
+unittest
+{
+    import gitIgnore : beginMarker, endMarker;
+
+    immutable directory = testDirectory("parentDirectory-fix-missing");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto p = withFiles(directory, "*.o", "/beta/ b.git\n/alpha/ a.git\n");
+    assert(p.fix.length == 0);
+    assert(p.gitIgnore.nested == ["/alpha/", "/beta/"]);
+    assert(p.gitRepos.entries[0].directory == "/alpha/"); // .gitrepos sorted too
+    p.write();
+    assert(buildPath(directory, ".gitignore").readText ==
+        "*.o\n" ~ beginMarker ~ "\n/alpha/\n/beta/\n" ~ endMarker ~ "\n");
+}
+
+/// What can't be fixed is returned, and left alone.
+unittest
+{
+    import gitIgnore : beginMarker, endMarker;
+    import std.algorithm.searching : canFind;
+
+    immutable directory = testDirectory("parentDirectory-fix-unfixable");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto p = withFiles(directory,
+        beginMarker ~ "\n/delta/\n/beta/\n/beta/\n" ~ endMarker ~ "\n",
+        "/beta/ b.git\n/alpha/ a.git\n/alpha/ a2.git\n");
+    const remaining = p.fix;
+    assert(remaining.length == 2);
+    foreach (f; remaining)
+    {
+        assert(!f.fixable);
+    }
+    assert(remaining[0].directory == "/alpha/" && remaining[0].message.canFind("listed 2 times"));
+    assert(remaining[1].directory == "/delta/" && remaining[1].message.canFind("not in"));
+    assert(p.gitIgnore.nested == ["/alpha/", "/beta/", "/delta/"]); // /delta/ kept
+}
+
+/// fix() on files that agree changes nothing, and a second fix() is a no-op.
+unittest
+{
+    import gitIgnore : beginMarker, endMarker;
+
+    immutable directory = testDirectory("parentDirectory-fix-idempotent");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    immutable ignoreText = "*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n";
+    auto p = withFiles(directory, ignoreText, "/alpha/ a.git\n");
+    assert(p.fix.length == 0);
+    assert(p.gitIgnore.content == ignoreText);
+
+    auto q = withFiles(directory, "alpha\n", "/alpha/ a.git\n");
+    q.fix();
+    immutable once = q.gitIgnore.content;
+    q.fix();
+    assert(q.gitIgnore.content == once);
 }

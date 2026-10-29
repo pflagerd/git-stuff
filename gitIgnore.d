@@ -68,6 +68,22 @@ class GitIgnore
     }
 
     /**
+     * Builds a GitIgnore from parts already in memory, for when a changed
+     * `before` or `after` is needed (ParentDirectory.fix): those fields are
+     * immutable, so changing them means a new object. Everything is copied,
+     * so the new object shares no arrays with the caller.
+     */
+    this(string path, const string[] before, const string[] nested,
+        const string[] after, bool endsWithNewline) @safe pure
+    {
+        this.path = path;
+        this.before = before.idup;
+        this.nested = nested.dup;
+        this.after = after.idup;
+        this.endsWithNewline = endsWithNewline;
+    }
+
+    /**
      * The file text write() would produce: `before`, then the managed block
      * with `nested` sorted and duplicates dropped, then `after`, joined with
      * '\n'.
@@ -605,4 +621,19 @@ unittest
     assert(!GitIgnore.isDirectoryPattern("/alpha//"));
     assert(!GitIgnore.isDirectoryPattern("/tools//alpha/"));
     assert(!GitIgnore.isDirectoryPattern("/alpha/\r")); // CRLF line: '\r' is part of it
+}
+
+// --- constructor from parts ------------------------------------------------
+
+/// Builds from parts, copying them; content() is as if it had been read.
+unittest
+{
+    string[] before = ["*.o"], nested = ["/beta/", "/alpha/"], after = ["tmp/"];
+    auto g = new GitIgnore("x/.gitignore", before, nested, after, false);
+    assert(g.path == "x/.gitignore" && !g.endsWithNewline);
+    assert(g.content == "*.o\n" ~ beginMarker ~ "\n/alpha/\n/beta/\n" ~ endMarker ~ "\ntmp/");
+
+    before[0] = "changed";
+    nested[0] = "/changed/";
+    assert(g.before == ["*.o"] && g.nested == ["/beta/", "/alpha/"]); // copies, not shared
 }
