@@ -62,8 +62,9 @@ class GitRepos
      * and the directory is normalized to "/alpha/" form.
      *
      * Throws: GitReposException for a line with fewer than two or more than
-     * three fields, an empty directory, or a directory containing "//".
-     * Line numbers start at 1.
+     * three fields, an empty directory, or more than one consecutive slash
+     * in any field (except where urlSlashesOk allows it in a url). Line
+     * numbers start at 1.
      */
     static GitReposEntry[] parse(const string[] lines) @safe pure
     {
@@ -107,14 +108,58 @@ class GitRepos
                     ~ ": empty directory");
             }
             entry.url = unescapeField(fields[1]);
+            if (!urlSlashesOk(entry.url))
+            {
+                throw new GitReposException("line " ~ lineNumber.to!string
+                    ~ ": too many slashes in url '" ~ entry.url ~ "'");
+            }
+
             if (fields.length == 3)
             {
                 entry.branch = unescapeField(fields[2]);
+                // git-check-ref-format: no multiple consecutive slashes.
+                if (entry.branch.canFind("//"))
+                {
+                    throw new GitReposException("line " ~ lineNumber.to!string
+                        ~ ": too many slashes in branch '" ~ entry.branch ~ "'");
+                }
             }
             entries ~= entry;
         }
 
         return entries;
+    }
+
+    /**
+     * Whether `url`'s slashes are acceptable: no "//" anywhere, except the
+     * "//" after a scheme ("ssh://", "https://"; RFC 3986 section 3), plus
+     * one more "/" for file URLs with an empty host ("file:///srv/x.git";
+     * RFC 8089). scp-like urls ("git@host:path") and local paths get no
+     * exception. Forms: https://git-scm.com/docs/git-clone#_git_urls
+     */
+    static bool urlSlashesOk(string url) @safe pure
+    {
+        import std.algorithm.searching : all, canFind, findSplit;
+        import std.ascii : isAlpha, isAlphaNum;
+
+        auto parts = url.findSplit("://");
+        immutable scheme = parts[0];
+        // RFC 3986: scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+        immutable hasScheme = parts[1].length && scheme.length && scheme[0].isAlpha
+            && scheme.all!(c => c.isAlphaNum || c == '+' || c == '-' || c == '.');
+        if (!hasScheme)
+        {
+            return !url.canFind("//");
+        }
+
+        string rest = parts[2];
+        if (scheme == "file" && rest.length && rest[0] == '/')
+        {
+            rest = rest[1 .. $]; // empty host: file:///path
+        }
+        // Any slash still at the front would make a run longer than allowed
+        // ("ssh:///x", "file:////x"), so it's checked as well as "//" later on.
+        return !(rest.length && rest[0] == '/') && !rest.canFind("//");
     }
 
     /**
@@ -293,6 +338,58 @@ unittest
 
     x = collectException!GitReposException(GitRepos.parse(["/ a.git"]));
     assert(x && x.msg.canFind("line 1") && x.msg.canFind("empty directory"));
+}
+
+/// urlSlashesOk: "//" only right after a scheme, plus one "/" for file:.
+unittest
+{
+    foreach (url; [
+        "git@github.com:pflagerd/alpha.git",       // scp-like
+        "ssh://git@github.com/pflagerd/alpha.git",
+        "ssh://git@github.com:22/pflagerd/alpha.git",
+        "https://github.com/pflagerd/alpha.git",
+        "git+ssh://host/x.git",                    // scheme with '+'
+        "file:///srv/git/alpha.git",               // empty host
+        "file://host/srv/git/alpha.git",
+        "/srv/git/alpha.git",                      // local path
+        "../alpha.git",
+    ])
+    {
+        assert(GitRepos.urlSlashesOk(url), url);
+    }
+
+    foreach (url; [
+        "git@github.com:pflagerd//alpha.git",
+        "git@github.com://pflagerd/alpha.git",     // not a scheme: '@' in it
+        "ssh:///host/x.git",                       // extra '/' only for file:
+        "https://github.com//pflagerd/alpha.git",
+        "file:////srv/git/alpha.git",
+        "file:///srv//git/alpha.git",
+        "//srv/git/alpha.git",
+        "/srv/git//alpha.git",
+        "1http://host/x.git",                      // scheme must start with a letter
+    ])
+    {
+        assert(!GitRepos.urlSlashesOk(url), url);
+    }
+}
+
+/// Too many slashes in a url or branch throws, naming the line.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.exception : collectException;
+
+    auto x = collectException!GitReposException(
+        GitRepos.parse(["/ok/ ok.git", "/a/ git@github.com:pflagerd//a.git"]));
+    assert(x && x.msg.canFind("line 2") && x.msg.canFind("too many slashes in url"));
+
+    x = collectException!GitReposException(
+        GitRepos.parse(["/a/ a.git feature//x"]));
+    assert(x && x.msg.canFind("line 1") && x.msg.canFind("too many slashes in branch"));
+
+    // A branch with single slashes is fine.
+    assert(GitRepos.parse(["/a/ a.git feature/x"])[0].branch == "feature/x");
 }
 
 /// A doubled slash anywhere in the directory throws, naming the line.

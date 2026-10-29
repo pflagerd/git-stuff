@@ -166,8 +166,8 @@ A line with fewer than two or more than three fields is a parse error.
 | Field | Required? | Meaning |
 |---|---|---|
 | `directory` | yes | Relative to the parent directory. Always written as `/alpha/`; read in any form (`alpha`, `/alpha`, `alpha/`, `/alpha/`) so existing files keep working (#5). A doubled slash anywhere (`//alpha/`, `/tools//gamma/`) is a parse error naming the line. Nested paths such as `/tools/gamma/` are allowed. |
-| `url` | yes | A git URL as `git clone` defines it ([git-clone: GIT URLS](https://git-scm.com/docs/git-clone#_git_urls)): `ssh://`, `https://`, `file://`, scp-like `user@host:path`, or a local path. It must equal the fetch url of at least one remote in the nested repo (`remote.<name>.url`, as shown by `git remote -v`). |
-| `branch` | no | When given, that branch is checked out. When absent: if `directory`'s last part differs from the name `git clone` would choose (`gitCloneDirectoryName.d`), check out a branch named after the directory; otherwise use the remote's default branch. |
+| `url` | yes | A git URL as `git clone` defines it ([git-clone: GIT URLS](https://git-scm.com/docs/git-clone#_git_urls)): `ssh://`, `https://`, `file://`, scp-like `user@host:path`, or a local path. It must equal the fetch url of at least one remote in the nested repo (`remote.<name>.url`, as shown by `git remote -v`). No `//` except straight after a scheme (`ssh://`, `https://`; [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986#section-3)), and for `file:` one more `/` for an empty host (`file:///srv/x.git`; [RFC 8089](https://www.rfc-editor.org/rfc/rfc8089#section-2)); scp-like urls and local paths may not contain `//` at all. Otherwise a parse error. |
+| `branch` | no | No `//`, which git forbids in ref names ([git-check-ref-format](https://git-scm.com/docs/git-check-ref-format)); otherwise a parse error. When given, that branch is checked out. When absent: if `directory`'s last part differs from the name `git clone` would choose (`gitCloneDirectoryName.d`), check out a branch named after the directory; otherwise use the remote's default branch. |
 
 ### Escaping (#3)
 
