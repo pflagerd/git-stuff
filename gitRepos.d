@@ -39,7 +39,7 @@ class GitReposException : Exception
 class GitRepos
 {
     immutable string path;   /// where it was read from; write()'s default
-    GitReposEntry[] entries; /// in file order, duplicates included
+    GitReposEntry[] gitReposEntries; /// in file order, duplicates included
 
     /**
      * Reads and parses `path`. A missing file is not an error: it reads as
@@ -52,7 +52,7 @@ class GitRepos
         this.path = path;
 
         bool finalNewline; // not needed: the file is always written with one
-        entries = parse(splitFileLines(readIfExists(path), finalNewline));
+        gitReposEntries = parse(splitFileLines(readIfExists(path), finalNewline));
     }
 
     /**
@@ -72,7 +72,7 @@ class GitRepos
         import std.array : split;
         import std.string : strip;
 
-        GitReposEntry[] entries;
+        GitReposEntry[] gitReposEntries;
 
         foreach (i, line; lines)
         {
@@ -92,55 +92,55 @@ class GitRepos
                     ~ fields.length.to!string ~ " field(s)");
             }
 
-            auto entry = GitReposEntry(unescapeField(fields[0]), unescapeField(fields[1]),
+            auto gitReposEntry = GitReposEntry(unescapeField(fields[0]), unescapeField(fields[1]),
                 fields.length == 3 ? unescapeField(fields[2]) : "");
-            immutable problem = validate(entry);
+            immutable problem = validate(gitReposEntry);
             if (problem !is null)
             {
                 throw new GitReposException("line " ~ lineNumber.to!string ~ ": " ~ problem);
             }
-            entries ~= entry;
+            gitReposEntries ~= gitReposEntry;
         }
 
-        return entries;
+        return gitReposEntries;
     }
 
     /**
-     * Normalizes `entry.directory` to "/alpha/" form and checks the entry
+     * Normalizes `gitReposEntry.directory` to "/alpha/" form and checks the entry
      * against the rules both parse() and add() enforce. Returns a message
      * describing the first problem, or null if there is none.
      */
-    static string validate(ref GitReposEntry entry) @safe pure
+    static string validate(ref GitReposEntry gitReposEntry) @safe pure
     {
         import std.algorithm.searching : canFind;
 
-        if (entry.directory.canFind("//"))
+        if (gitReposEntry.directory.canFind("//"))
         {
-            return "too many slashes in directory '" ~ entry.directory ~ "'";
+            return "too many slashes in directory '" ~ gitReposEntry.directory ~ "'";
         }
-        entry.directory = normalizeDirectory(entry.directory);
-        if (entry.directory.length == 0)
+        gitReposEntry.directory = normalizeDirectory(gitReposEntry.directory);
+        if (gitReposEntry.directory.length == 0)
         {
             return "empty directory";
         }
-        if (entry.url.length == 0)
+        if (gitReposEntry.url.length == 0)
         {
             return "empty url";
         }
-        if (!urlSlashesOk(entry.url))
+        if (!urlSlashesOk(gitReposEntry.url))
         {
-            return "too many slashes in url '" ~ entry.url ~ "'";
+            return "too many slashes in url '" ~ gitReposEntry.url ~ "'";
         }
         // git-check-ref-format: no multiple consecutive slashes.
-        if (entry.branch.canFind("//"))
+        if (gitReposEntry.branch.canFind("//"))
         {
-            return "too many slashes in branch '" ~ entry.branch ~ "'";
+            return "too many slashes in branch '" ~ gitReposEntry.branch ~ "'";
         }
         return null;
     }
 
     /**
-     * Adds `entry`, replacing every existing entry with the same directory.
+     * Adds `gitReposEntry`, replacing every existing entry with the same directory.
      * The directory is normalized first, so add("alpha", ...) and
      * add("/alpha/", ...) mean the same.
      *
@@ -148,17 +148,17 @@ class GitRepos
      * enforces (see validate), so write() never produces a file that
      * won't parse.
      */
-    void add(GitReposEntry entry) @safe
+    void add(GitReposEntry gitReposEntry) @safe
     {
         import std.algorithm.iteration : filter;
         import std.array : array;
 
-        immutable problem = validate(entry);
+        immutable problem = validate(gitReposEntry);
         if (problem !is null)
         {
             throw new GitReposException("add(): " ~ problem);
         }
-        entries = entries.filter!(e => e.directory != entry.directory).array ~ entry;
+        gitReposEntries = gitReposEntries.filter!(existing => existing.directory != gitReposEntry.directory).array ~ gitReposEntry;
     }
 
     /**
@@ -173,9 +173,9 @@ class GitRepos
         import std.array : array;
 
         immutable target = normalizeDirectory(directory);
-        immutable before = entries.length;
-        entries = entries.filter!(e => e.directory != target).array;
-        return entries.length != before;
+        immutable before = gitReposEntries.length;
+        gitReposEntries = gitReposEntries.filter!(gitReposEntry => gitReposEntry.directory != target).array;
+        return gitReposEntries.length != before;
     }
 
     /**
@@ -196,20 +196,20 @@ class GitRepos
 
         Finding[] findings;
 
-        if (!entries.isSorted!((a, b) => a.directory < b.directory))
+        if (!gitReposEntries.isSorted!((left, right) => left.directory < right.directory))
         {
             findings ~= Finding("", path ~ ": entries are not sorted by directory", true);
         }
 
         size_t[string] count;
         string[] order; // directories in order of first appearance
-        foreach (e; entries)
+        foreach (gitReposEntry; gitReposEntries)
         {
-            if (e.directory !in count)
+            if (gitReposEntry.directory !in count)
             {
-                order ~= e.directory;
+                order ~= gitReposEntry.directory;
             }
-            ++count[e.directory];
+            ++count[gitReposEntry.directory];
         }
         foreach (directory; order)
         {
@@ -234,16 +234,16 @@ class GitRepos
         import std.algorithm.mutation : SwapStrategy;
         import std.algorithm.sorting : sort;
 
-        auto sorted = entries.dup;
-        sorted.sort!((a, b) => a.directory < b.directory, SwapStrategy.stable);
+        auto sorted = gitReposEntries.dup;
+        sorted.sort!((left, right) => left.directory < right.directory, SwapStrategy.stable);
 
         string text;
-        foreach (e; sorted)
+        foreach (gitReposEntry; sorted)
         {
-            text ~= escapeField(e.directory) ~ " " ~ escapeField(e.url);
-            if (e.branch.length)
+            text ~= escapeField(gitReposEntry.directory) ~ " " ~ escapeField(gitReposEntry.url);
+            if (gitReposEntry.branch.length)
             {
-                text ~= " " ~ escapeField(e.branch);
+                text ~= " " ~ escapeField(gitReposEntry.branch);
             }
             text ~= "\n";
         }
@@ -427,41 +427,41 @@ unittest
 /// Two and three fields; the directory is normalized.
 unittest
 {
-    auto e = GitRepos.parse([
+    auto gitReposEntries = GitRepos.parse([
         "/alpha/ git@github.com:pflagerd/alpha.git",
         "beta git@github.com:pflagerd/beta.git dev",
     ]);
-    assert(e.length == 2);
-    assert(e[0] == GitReposEntry("/alpha/", "git@github.com:pflagerd/alpha.git", ""));
-    assert(e[1] == GitReposEntry("/beta/", "git@github.com:pflagerd/beta.git", "dev"));
+    assert(gitReposEntries.length == 2);
+    assert(gitReposEntries[0] == GitReposEntry("/alpha/", "git@github.com:pflagerd/alpha.git", ""));
+    assert(gitReposEntries[1] == GitReposEntry("/beta/", "git@github.com:pflagerd/beta.git", "dev"));
 }
 
 /// Blank lines and comments are skipped; file order and duplicates are kept.
 unittest
 {
-    auto e = GitRepos.parse([
+    auto gitReposEntries = GitRepos.parse([
         "# nested repos", "",
         "/beta/ b.git", "   ", "  # indented comment",
         "/alpha/ a.git", "/beta/ other.git",
     ]);
-    assert(e.length == 3);
-    assert(e[0].directory == "/beta/" && e[1].directory == "/alpha/");
-    assert(e[2] == GitReposEntry("/beta/", "other.git", ""));
+    assert(gitReposEntries.length == 3);
+    assert(gitReposEntries[0].directory == "/beta/" && gitReposEntries[1].directory == "/alpha/");
+    assert(gitReposEntries[2] == GitReposEntry("/beta/", "other.git", ""));
 }
 
 /// Runs of spaces or tabs separate fields; a CRLF line's '\r' is dropped.
 unittest
 {
-    auto e = GitRepos.parse(["/alpha/  a.git\tdev", "/beta/ b.git\r"]);
-    assert(e[0] == GitReposEntry("/alpha/", "a.git", "dev"));
-    assert(e[1] == GitReposEntry("/beta/", "b.git", ""));
+    auto gitReposEntries = GitRepos.parse(["/alpha/  a.git\tdev", "/beta/ b.git\r"]);
+    assert(gitReposEntries[0] == GitReposEntry("/alpha/", "a.git", "dev"));
+    assert(gitReposEntries[1] == GitReposEntry("/beta/", "b.git", ""));
 }
 
 /// Escaped fields are decoded.
 unittest
 {
-    auto e = GitRepos.parse(["/My%20Repo/ /srv/git/my%20repo.git my%25branch"]);
-    assert(e[0] == GitReposEntry("/My Repo/", "/srv/git/my repo.git", "my%branch"));
+    auto gitReposEntries = GitRepos.parse(["/My%20Repo/ /srv/git/my%20repo.git my%25branch"]);
+    assert(gitReposEntries[0] == GitReposEntry("/My Repo/", "/srv/git/my repo.git", "my%branch"));
 }
 
 /// Wrong field counts and an empty directory throw, naming the line.
@@ -470,14 +470,14 @@ unittest
     import std.algorithm.searching : canFind;
     import std.exception : collectException;
 
-    auto x = collectException!GitReposException(GitRepos.parse(["# c", "/alpha/"]));
-    assert(x && x.msg.canFind("line 2") && x.msg.canFind("1 field"));
+    auto exception = collectException!GitReposException(GitRepos.parse(["# c", "/alpha/"]));
+    assert(exception && exception.msg.canFind("line 2") && exception.msg.canFind("1 field"));
 
-    x = collectException!GitReposException(GitRepos.parse(["/a/ a.git dev extra"]));
-    assert(x && x.msg.canFind("line 1") && x.msg.canFind("4 field"));
+    exception = collectException!GitReposException(GitRepos.parse(["/a/ a.git dev extra"]));
+    assert(exception && exception.msg.canFind("line 1") && exception.msg.canFind("4 field"));
 
-    x = collectException!GitReposException(GitRepos.parse(["/ a.git"]));
-    assert(x && x.msg.canFind("line 1") && x.msg.canFind("empty directory"));
+    exception = collectException!GitReposException(GitRepos.parse(["/ a.git"]));
+    assert(exception && exception.msg.canFind("line 1") && exception.msg.canFind("empty directory"));
 }
 
 /// urlSlashesOk: "//" only right after a scheme, plus one "/" for file:.
@@ -520,13 +520,13 @@ unittest
     import std.algorithm.searching : canFind;
     import std.exception : collectException;
 
-    auto x = collectException!GitReposException(
+    auto exception = collectException!GitReposException(
         GitRepos.parse(["/ok/ ok.git", "/a/ git@github.com:pflagerd//a.git"]));
-    assert(x && x.msg.canFind("line 2") && x.msg.canFind("too many slashes in url"));
+    assert(exception && exception.msg.canFind("line 2") && exception.msg.canFind("too many slashes in url"));
 
-    x = collectException!GitReposException(
+    exception = collectException!GitReposException(
         GitRepos.parse(["/a/ a.git feature//x"]));
-    assert(x && x.msg.canFind("line 1") && x.msg.canFind("too many slashes in branch"));
+    assert(exception && exception.msg.canFind("line 1") && exception.msg.canFind("too many slashes in branch"));
 
     // A branch with single slashes is fine.
     assert(GitRepos.parse(["/a/ a.git feature/x"])[0].branch == "feature/x");
@@ -540,9 +540,9 @@ unittest
 
     foreach (directory; ["//alpha/", "/alpha//", "/tools//alpha/", "//"])
     {
-        auto x = collectException!GitReposException(
+        auto exception = collectException!GitReposException(
             GitRepos.parse(["/ok/ ok.git", directory ~ " a.git"]));
-        assert(x && x.msg.canFind("line 2") && x.msg.canFind("too many slashes"), directory);
+        assert(exception && exception.msg.canFind("line 2") && exception.msg.canFind("too many slashes"), directory);
     }
 }
 
@@ -563,11 +563,11 @@ unittest
 
     immutable file = buildPath(directory, ".gitrepos");
     auto missing = new GitRepos(file);
-    assert(missing.path == file && missing.entries.length == 0);
+    assert(missing.path == file && missing.gitReposEntries.length == 0);
 
     file.write("/alpha/ git@github.com:pflagerd/alpha.git\n/beta/ b.git dev\n");
-    auto g = new GitRepos(file);
-    assert(g.entries == [
+    auto gitRepos = new GitRepos(file);
+    assert(gitRepos.gitReposEntries == [
         GitReposEntry("/alpha/", "git@github.com:pflagerd/alpha.git", ""),
         GitReposEntry("/beta/", "b.git", "dev"),
     ]);
@@ -603,9 +603,9 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto g = fromText(directory, "/beta/ b.git\n");
-    g.add(GitReposEntry("alpha", "git@github.com:pflagerd/alpha.git", ""));
-    assert(g.entries == [
+    auto gitRepos = fromText(directory, "/beta/ b.git\n");
+    gitRepos.add(GitReposEntry("alpha", "git@github.com:pflagerd/alpha.git", ""));
+    assert(gitRepos.gitReposEntries == [
         GitReposEntry("/beta/", "b.git", ""),
         GitReposEntry("/alpha/", "git@github.com:pflagerd/alpha.git", ""),
     ]);
@@ -620,9 +620,9 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto g = fromText(directory, "/alpha/ old.git\n/beta/ b.git\n/alpha/ older.git dev\n");
-    g.add(GitReposEntry("/alpha", "new.git", "main"));
-    assert(g.entries == [
+    auto gitRepos = fromText(directory, "/alpha/ old.git\n/beta/ b.git\n/alpha/ older.git dev\n");
+    gitRepos.add(GitReposEntry("/alpha", "new.git", "main"));
+    assert(gitRepos.gitReposEntries == [
         GitReposEntry("/beta/", "b.git", ""),
         GitReposEntry("/alpha/", "new.git", "main"),
     ]);
@@ -640,7 +640,7 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto g = fromText(directory, "/beta/ b.git\n");
+    auto gitRepos = fromText(directory, "/beta/ b.git\n");
     foreach (bad; [
         GitReposEntry("//alpha/", "a.git", ""),
         GitReposEntry("/", "a.git", ""),
@@ -649,10 +649,10 @@ unittest
         GitReposEntry("/alpha/", "a.git", "feature//x"),
     ])
     {
-        auto x = collectException!GitReposException(g.add(bad));
-        assert(x && x.msg.canFind("add(): "), bad.directory ~ " " ~ bad.url);
+        auto exception = collectException!GitReposException(gitRepos.add(bad));
+        assert(exception && exception.msg.canFind("add(): "), bad.directory ~ " " ~ bad.url);
     }
-    assert(g.entries == [GitReposEntry("/beta/", "b.git", "")]);
+    assert(gitRepos.gitReposEntries == [GitReposEntry("/beta/", "b.git", "")]);
 }
 
 /// remove() normalizes its argument, removes every match, and reports it.
@@ -664,11 +664,11 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto g = fromText(directory, "/alpha/ a.git\n/beta/ b.git\n/alpha/ a2.git\n");
-    assert(g.remove("alpha"));
-    assert(g.entries == [GitReposEntry("/beta/", "b.git", "")]);
-    assert(!g.remove("/gamma/"));
-    assert(g.entries.length == 1);
+    auto gitRepos = fromText(directory, "/alpha/ a.git\n/beta/ b.git\n/alpha/ a2.git\n");
+    assert(gitRepos.remove("alpha"));
+    assert(gitRepos.gitReposEntries == [GitReposEntry("/beta/", "b.git", "")]);
+    assert(!gitRepos.remove("/gamma/"));
+    assert(gitRepos.gitReposEntries.length == 1);
 }
 
 // --- content() / write() ---------------------------------------------------
@@ -682,9 +682,9 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto g = fromText(directory, "beta  b.git\tdev\n# comment\n\n/alpha/ a.git\n");
-    g.add(GitReposEntry("My Repo", "/srv/git/my repo.git", ""));
-    assert(g.content ==
+    auto gitRepos = fromText(directory, "beta  b.git\tdev\n# comment\n\n/alpha/ a.git\n");
+    gitRepos.add(GitReposEntry("My Repo", "/srv/git/my repo.git", ""));
+    assert(gitRepos.content ==
         "/My%20Repo/ /srv/git/my%20repo.git\n"
         ~ "/alpha/ a.git\n"
         ~ "/beta/ b.git dev\n");
@@ -699,8 +699,8 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto g = fromText(directory, "/beta/ second.git\n/alpha/ a.git\n/beta/ first.git\n");
-    assert(g.content == "/alpha/ a.git\n/beta/ second.git\n/beta/ first.git\n");
+    auto gitRepos = fromText(directory, "/beta/ second.git\n/alpha/ a.git\n/beta/ first.git\n");
+    assert(gitRepos.content == "/alpha/ a.git\n/beta/ second.git\n/beta/ first.git\n");
 }
 
 /// No entries gives "".
@@ -726,16 +726,16 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto g = fromText(directory, "/alpha/ a.git\n");
-    g.add(GitReposEntry("/beta/", "b.git", ""));
+    auto gitRepos = fromText(directory, "/alpha/ a.git\n");
+    gitRepos.add(GitReposEntry("/beta/", "b.git", ""));
     immutable other = buildPath(directory, "other");
-    g.write(other);
+    gitRepos.write(other);
     assert(other.readText == "/alpha/ a.git\n/beta/ b.git\n");
-    assert(g.path.readText == "/alpha/ a.git\n");
+    assert(gitRepos.path.readText == "/alpha/ a.git\n");
 
-    g.write();
-    assert(g.path.readText == "/alpha/ a.git\n/beta/ b.git\n");
-    assert(new GitRepos(g.path).entries == g.entries); // reads back the same
+    gitRepos.write();
+    assert(gitRepos.path.readText == "/alpha/ a.git\n/beta/ b.git\n");
+    assert(new GitRepos(gitRepos.path).gitReposEntries == gitRepos.gitReposEntries); // reads back the same
 }
 
 /// A missing file isn't created empty; an existing one is emptied, not deleted.
@@ -753,10 +753,10 @@ unittest
     missing.write();
     assert(!missing.path.exists);
 
-    auto g = fromText(directory, "/alpha/ a.git\n");
-    assert(g.remove("/alpha/"));
-    g.write();
-    assert(g.path.exists && g.path.readText == "");
+    auto gitRepos = fromText(directory, "/alpha/ a.git\n");
+    assert(gitRepos.remove("/alpha/"));
+    gitRepos.write();
+    assert(gitRepos.path.exists && gitRepos.path.readText == "");
 }
 
 // --- round trip ------------------------------------------------------------
@@ -788,10 +788,10 @@ unittest
     {
         immutable file = buildPath(directory, ".gitrepos");
         file.write(original);
-        auto g = new GitRepos(file);
-        assert(g.content == original, "content() differs for case " ~ i.to!string);
+        auto gitRepos = new GitRepos(file);
+        assert(gitRepos.content == original, "content() differs for case " ~ i.to!string);
 
-        g.write();
+        gitRepos.write();
         assert(cast(string) file.read == original, "write() differs for case " ~ i.to!string);
     }
 }
@@ -859,11 +859,11 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto g = fromText(directory, "/beta/ b.git\n/alpha/ a.git\n");
-    const findings = g.check;
+    auto gitRepos = fromText(directory, "/beta/ b.git\n/alpha/ a.git\n");
+    const findings = gitRepos.check;
     assert(findings.length == 1);
     assert(findings[0].directory == "" && findings[0].fixable);
-    assert(findings[0].message.canFind(g.path) && findings[0].message.canFind("not sorted"));
+    assert(findings[0].message.canFind(gitRepos.path) && findings[0].message.canFind("not sorted"));
 }
 
 /// Duplicates: one unfixable finding per directory, with the count, in
@@ -878,18 +878,18 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto g = fromText(directory,
+    auto gitRepos = fromText(directory,
         "/gamma/ c.git\n/alpha/ a.git\n/gamma/ c2.git\n/alpha/ a2.git\n/alpha/ a3.git\n");
-    const findings = g.check;
+    const findings = gitRepos.check;
     assert(findings.length == 3);
     assert(findings[0].message.canFind("not sorted"));
     assert(findings[1].directory == "/gamma/" && !findings[1].fixable
         && findings[1].message.canFind("listed 2 times"));
     assert(findings[2].directory == "/alpha/" && !findings[2].fixable
         && findings[2].message.canFind("listed 3 times"));
-    foreach (f; findings)
+    foreach (finding; findings)
     {
-        assert(f.message.canFind(g.path)); // every message names the file
+        assert(finding.message.canFind(gitRepos.path)); // every message names the file
     }
 }
 

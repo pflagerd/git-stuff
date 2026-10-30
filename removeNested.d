@@ -65,7 +65,7 @@ ExitStatus run(string[] args, File output, File errors)
     foreach (argument; args[1 .. $])
     {
         immutable directory = GitRepos.normalizeDirectory(argument);
-        immutable inRepos = parent.gitRepos.entries.any!(e => e.directory == directory);
+        immutable inRepos = parent.gitRepos.gitReposEntries.any!(e => e.directory == directory);
         immutable inIgnore = parent.gitIgnore.nested.canFind(directory);
 
         if (directory.length == 0 || !parent.remove(directory))

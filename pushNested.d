@@ -75,7 +75,7 @@ ExitStatus run(string[] args, File output, File errors)
     bool failed = printFindings(parent.check, errors) > 0;
 
     bool[string] seen;
-    foreach (entry; parent.gitRepos.entries)
+    foreach (entry; parent.gitRepos.gitReposEntries)
     {
         if (entry.directory in seen)
         {

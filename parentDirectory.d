@@ -19,6 +19,8 @@ class ParentDirectory
     // holds only ParentDirectory, so only its methods can replace these.
     // Commands go through add(), remove() and fix(), which keep both files
     // in step. https://dlang.org/spec/attribute.html#visibility_attributes
+    // The trailing _ marks the field behind the read-only property of the
+    // same name below; D won't let a field and a method share a name.
     private GitIgnore gitIgnore_;
     private GitRepos gitRepos_;
 
@@ -61,12 +63,12 @@ class ParentDirectory
      *
      * Throws: GitReposException for an entry parse() would refuse.
      */
-    void add(GitReposEntry entry)
+    void add(GitReposEntry gitReposEntry)
     {
         import std.algorithm.searching : canFind;
 
-        gitRepos_.add(entry); // may throw; nothing changed yet if it does
-        immutable pattern = GitRepos.normalizeDirectory(entry.directory);
+        gitRepos_.add(gitReposEntry); // may throw; nothing changed yet if it does
+        immutable pattern = GitRepos.normalizeDirectory(gitReposEntry.directory);
         if (!gitIgnore_.nested.canFind(pattern))
         {
             gitIgnore_.nested ~= pattern;
@@ -89,7 +91,7 @@ class ParentDirectory
         immutable fromRepos = gitRepos_.remove(directory);
 
         immutable before = gitIgnore_.nested.length;
-        gitIgnore_.nested = gitIgnore_.nested.filter!(p => p != pattern).array;
+        gitIgnore_.nested = gitIgnore_.nested.filter!(existingPattern => existingPattern != pattern).array;
         immutable fromIgnore = gitIgnore_.nested.length != before;
 
         return fromRepos || fromIgnore;
@@ -116,13 +118,13 @@ class ParentDirectory
 
         bool[string] inRepos;
         string[] reposOrder; // distinct .gitrepos directories, in file order
-        foreach (e; gitRepos_.entries)
+        foreach (gitReposEntry; gitRepos_.gitReposEntries)
         {
-            if (e.directory !in inRepos)
+            if (gitReposEntry.directory !in inRepos)
             {
-                reposOrder ~= e.directory;
+                reposOrder ~= gitReposEntry.directory;
             }
-            inRepos[e.directory] = true;
+            inRepos[gitReposEntry.directory] = true;
         }
 
         bool[string] loose;
@@ -190,16 +192,16 @@ class ParentDirectory
         Finding[] findings;
         bool[string] seen;
 
-        foreach (e; gitRepos_.entries)
+        foreach (gitReposEntry; gitRepos_.gitReposEntries)
         {
-            if (e.directory in seen)
+            if (gitReposEntry.directory in seen)
             {
                 continue;
             }
-            seen[e.directory] = true;
+            seen[gitReposEntry.directory] = true;
 
-            immutable onDisk = buildPath(directory, e.directory[1 .. $ - 1]);
-            string problem = repositoryProblem(e.directory, onDisk);
+            immutable onDisk = buildPath(directory, gitReposEntry.directory[1 .. $ - 1]);
+            string problem = repositoryProblem(gitReposEntry.directory, onDisk);
             if (problem.length == 0)
             {
                 // Lines are "remote.<name>.url <url>"; exit status 1 just
@@ -210,7 +212,7 @@ class ParentDirectory
                 foreach (line; urls.output.lineSplitter)
                 {
                     auto nameAndUrl = line.strip.findSplit(" ");
-                    if (nameAndUrl[1].length && nameAndUrl[2] == e.url)
+                    if (nameAndUrl[1].length && nameAndUrl[2] == gitReposEntry.url)
                     {
                         found = true;
                         break;
@@ -218,13 +220,13 @@ class ParentDirectory
                 }
                 if (!found)
                 {
-                    problem = "no remote of " ~ e.directory ~ " has url " ~ e.url;
+                    problem = "no remote of " ~ gitReposEntry.directory ~ " has url " ~ gitReposEntry.url;
                 }
             }
 
             if (problem.length)
             {
-                findings ~= Finding(e.directory, onDisk ~ ": " ~ problem, false);
+                findings ~= Finding(gitReposEntry.directory, onDisk ~ ": " ~ problem, false);
             }
         }
 
@@ -309,9 +311,9 @@ class ParentDirectory
         import std.array : array;
 
         bool[string] inRepos;
-        foreach (e; gitRepos_.entries)
+        foreach (gitReposEntry; gitRepos_.gitReposEntries)
         {
-            inRepos[e.directory] = true;
+            inRepos[gitReposEntry.directory] = true;
         }
 
         string[] moved;
@@ -326,16 +328,16 @@ class ParentDirectory
             return true;
         }
 
-        immutable before = gitIgnore_.before.filter!(l => keep(l)).array;
-        immutable after = gitIgnore_.after.filter!(l => keep(l)).array;
-        string[] nested = gitIgnore_.nested ~ moved ~ gitRepos_.entries
-            .filter!(e => !gitIgnore_.nested.canFind(e.directory))
-            .map!(e => e.directory).array;
+        immutable before = gitIgnore_.before.filter!(line => keep(line)).array;
+        immutable after = gitIgnore_.after.filter!(line => keep(line)).array;
+        string[] nested = gitIgnore_.nested ~ moved ~ gitRepos_.gitReposEntries
+            .filter!(gitReposEntry => !gitIgnore_.nested.canFind(gitReposEntry.directory))
+            .map!(gitReposEntry => gitReposEntry.directory).array;
 
         gitIgnore_ = new GitIgnore(gitIgnore_.path, before,
             GitIgnore.sortedUnique(nested), after, gitIgnore_.endsWithNewline);
 
-        gitRepos_.entries.sort!((a, b) => a.directory < b.directory, SwapStrategy.stable);
+        gitRepos_.gitReposEntries.sort!((left, right) => left.directory < right.directory, SwapStrategy.stable);
 
         return check();
     }
@@ -352,7 +354,7 @@ class ParentDirectory
         import std.ascii : isWhite;
 
         if (line.length == 0 || line[0] == '#' || line[0] == '!'
-            || line.canFind("//") || line.any!(c => c == '*' || c == '?' || c == '[')
+            || line.canFind("//") || line.any!(character => character == '*' || character == '?' || character == '[')
             || line[0].isWhite || line[$ - 1].isWhite)
         {
             return "";
@@ -390,13 +392,13 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto p = new ParentDirectory(directory);
-    assert(p.directory == directory);
-    assert(p.gitIgnore.path == buildPath(directory, ".gitignore"));
-    assert(p.gitRepos.path == buildPath(directory, ".gitrepos"));
-    assert(p.gitIgnore.nested.length == 0 && p.gitRepos.entries.length == 0);
+    auto parentDirectory = new ParentDirectory(directory);
+    assert(parentDirectory.directory == directory);
+    assert(parentDirectory.gitIgnore.path == buildPath(directory, ".gitignore"));
+    assert(parentDirectory.gitRepos.path == buildPath(directory, ".gitrepos"));
+    assert(parentDirectory.gitIgnore.nested.length == 0 && parentDirectory.gitRepos.gitReposEntries.length == 0);
 
-    p.write();
+    parentDirectory.write();
     assert(!buildPath(directory, ".gitignore").exists);
     assert(!buildPath(directory, ".gitrepos").exists);
 }
@@ -421,11 +423,11 @@ unittest
     ignoreFile.write(ignoreText);
     reposFile.write(reposText);
 
-    auto p = new ParentDirectory(directory);
-    assert(p.gitIgnore.nested == ["/alpha/"]);
-    assert(p.gitRepos.entries == [GitReposEntry("/alpha/", "git@github.com:pflagerd/alpha.git", "")]);
+    auto parentDirectory = new ParentDirectory(directory);
+    assert(parentDirectory.gitIgnore.nested == ["/alpha/"]);
+    assert(parentDirectory.gitRepos.gitReposEntries == [GitReposEntry("/alpha/", "git@github.com:pflagerd/alpha.git", "")]);
 
-    p.write();
+    parentDirectory.write();
     assert(ignoreFile.readText == ignoreText);
     assert(reposFile.readText == reposText);
 }
@@ -455,8 +457,8 @@ unittest
 /// The accessors are read-only: this must not compile.
 unittest
 {
-    static assert(!__traits(compiles, (ParentDirectory p) { p.gitRepos.entries = []; }));
-    static assert(!__traits(compiles, (ParentDirectory p) { p.gitIgnore.nested ~= "/x/"; }));
+    static assert(!__traits(compiles, (ParentDirectory parentDirectory) { parentDirectory.gitRepos.gitReposEntries = []; }));
+    static assert(!__traits(compiles, (ParentDirectory parentDirectory) { parentDirectory.gitIgnore.nested ~= "/x/"; }));
 }
 
 // --- add() / remove() --------------------------------------------------------
@@ -472,13 +474,13 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto p = new ParentDirectory(directory);
-    p.add(GitReposEntry("alpha", "git@github.com:pflagerd/alpha.git", ""));
-    assert(p.gitRepos.entries == [GitReposEntry("/alpha/", "git@github.com:pflagerd/alpha.git", "")]);
-    assert(p.gitIgnore.nested == ["/alpha/"]);
+    auto parentDirectory = new ParentDirectory(directory);
+    parentDirectory.add(GitReposEntry("alpha", "git@github.com:pflagerd/alpha.git", ""));
+    assert(parentDirectory.gitRepos.gitReposEntries == [GitReposEntry("/alpha/", "git@github.com:pflagerd/alpha.git", "")]);
+    assert(parentDirectory.gitIgnore.nested == ["/alpha/"]);
     assert(!buildPath(directory, ".gitrepos").exists); // nothing written yet
 
-    p.write();
+    parentDirectory.write();
     assert(buildPath(directory, ".gitrepos").readText == "/alpha/ git@github.com:pflagerd/alpha.git\n");
     assert(buildPath(directory, ".gitignore").readText
         == beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n");
@@ -493,11 +495,11 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto p = new ParentDirectory(directory);
-    p.add(GitReposEntry("/alpha/", "old.git", ""));
-    p.add(GitReposEntry("alpha", "new.git", "dev"));
-    assert(p.gitRepos.entries == [GitReposEntry("/alpha/", "new.git", "dev")]);
-    assert(p.gitIgnore.nested == ["/alpha/"]);
+    auto parentDirectory = new ParentDirectory(directory);
+    parentDirectory.add(GitReposEntry("/alpha/", "old.git", ""));
+    parentDirectory.add(GitReposEntry("alpha", "new.git", "dev"));
+    assert(parentDirectory.gitRepos.gitReposEntries == [GitReposEntry("/alpha/", "new.git", "dev")]);
+    assert(parentDirectory.gitIgnore.nested == ["/alpha/"]);
 }
 
 /// An invalid entry changes neither file.
@@ -512,11 +514,11 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto p = new ParentDirectory(directory);
-    p.add(GitReposEntry("/alpha/", "a.git", ""));
-    assertThrown!GitReposException(p.add(GitReposEntry("//beta/", "b.git", "")));
-    assert(p.gitRepos.entries == [GitReposEntry("/alpha/", "a.git", "")]);
-    assert(p.gitIgnore.nested == ["/alpha/"]);
+    auto parentDirectory = new ParentDirectory(directory);
+    parentDirectory.add(GitReposEntry("/alpha/", "a.git", ""));
+    assertThrown!GitReposException(parentDirectory.add(GitReposEntry("//beta/", "b.git", "")));
+    assert(parentDirectory.gitRepos.gitReposEntries == [GitReposEntry("/alpha/", "a.git", "")]);
+    assert(parentDirectory.gitIgnore.nested == ["/alpha/"]);
 }
 
 /// remove() takes it out of both files and never touches the directory.
@@ -533,15 +535,15 @@ unittest
     immutable alphaOnDisk = buildPath(directory, "alpha");
     alphaOnDisk.mkdir;
 
-    auto p = new ParentDirectory(directory);
-    p.add(GitReposEntry("/alpha/", "a.git", ""));
-    p.add(GitReposEntry("/beta/", "b.git", ""));
-    assert(p.remove("alpha"));
-    assert(p.gitRepos.entries == [GitReposEntry("/beta/", "b.git", "")]);
-    assert(p.gitIgnore.nested == ["/beta/"]);
+    auto parentDirectory = new ParentDirectory(directory);
+    parentDirectory.add(GitReposEntry("/alpha/", "a.git", ""));
+    parentDirectory.add(GitReposEntry("/beta/", "b.git", ""));
+    assert(parentDirectory.remove("alpha"));
+    assert(parentDirectory.gitRepos.gitReposEntries == [GitReposEntry("/beta/", "b.git", "")]);
+    assert(parentDirectory.gitIgnore.nested == ["/beta/"]);
     assert(alphaOnDisk.exists);
 
-    assert(!p.remove("/gamma/")); // in neither file
+    assert(!parentDirectory.remove("/gamma/")); // in neither file
 }
 
 /// remove() also cleans up when only one file has the directory.
@@ -559,11 +561,11 @@ unittest
     buildPath(directory, ".gitignore").write(beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n");
     buildPath(directory, ".gitrepos").write("/beta/ b.git\n");
 
-    auto p = new ParentDirectory(directory);
-    assert(p.remove("alpha"));  // only in .gitignore
-    assert(p.gitIgnore.nested.length == 0);
-    assert(p.remove("/beta/")); // only in .gitrepos
-    assert(p.gitRepos.entries.length == 0);
+    auto parentDirectory = new ParentDirectory(directory);
+    assert(parentDirectory.remove("alpha"));  // only in .gitignore
+    assert(parentDirectory.gitIgnore.nested.length == 0);
+    assert(parentDirectory.remove("/beta/")); // only in .gitrepos
+    assert(parentDirectory.gitRepos.gitReposEntries.length == 0);
 }
 
 // --- check() -----------------------------------------------------------------
@@ -592,10 +594,10 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto p = withFiles(directory,
+    auto parentDirectory = withFiles(directory,
         "*.o\n" ~ beginMarker ~ "\n/alpha/\n/beta/\n" ~ endMarker ~ "\n",
         "/alpha/ a.git\n/beta/ b.git\n");
-    assert(p.check.length == 0);
+    assert(parentDirectory.check.length == 0);
 }
 
 /// A directory with neither file has no findings.
@@ -622,10 +624,10 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto p = withFiles(directory,
+    auto parentDirectory = withFiles(directory,
         beginMarker ~ "\n/beta/\n/alpha/\n" ~ endMarker ~ "\n",
         "/beta/ b.git\n/alpha/ a.git\n");
-    const findings = p.check;
+    const findings = parentDirectory.check;
     assert(findings.length == 2);
     assert(findings[0].message.canFind(".gitignore") && findings[0].message.canFind("not sorted"));
     assert(findings[1].message.canFind(".gitrepos") && findings[1].message.canFind("not sorted"));
@@ -644,8 +646,8 @@ unittest
 
     foreach (line; ["alpha", "/alpha", "alpha/", "/alpha/"])
     {
-        auto p = withFiles(directory, "*.o\n" ~ line ~ "\n", "/alpha/ a.git\n");
-        const findings = p.check;
+        auto parentDirectory = withFiles(directory, "*.o\n" ~ line ~ "\n", "/alpha/ a.git\n");
+        const findings = parentDirectory.check;
         assert(findings.length == 1, line);
         assert(findings[0].directory == "/alpha/" && findings[0].fixable, line);
         assert(findings[0].message.canFind("outside the managed block"), line);
@@ -664,15 +666,15 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto p = withFiles(directory,
+    auto parentDirectory = withFiles(directory,
         beginMarker ~ "\n/alpha/\n/gamma/\n" ~ endMarker ~ "\n",
         "/alpha/ a.git\n/beta/ b.git\n");
-    const findings = p.check;
+    const findings = parentDirectory.check;
     assert(findings.length == 2);
     assert(findings[0].directory == "/beta/" && findings[0].fixable
         && findings[0].message.canFind("not in the managed block"));
     assert(findings[1].directory == "/gamma/" && !findings[1].fixable
-        && findings[1].message.canFind("not in " ~ p.gitRepos.path));
+        && findings[1].message.canFind("not in " ~ parentDirectory.gitRepos.path));
 }
 
 /// Lines that can't name a directory are never taken for loose repo lines.
@@ -697,8 +699,8 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto p = withFiles(directory, beginMarker ~ "\nalpha\n" ~ endMarker ~ "\n", "");
-    const findings = p.check;
+    auto parentDirectory = withFiles(directory, beginMarker ~ "\nalpha\n" ~ endMarker ~ "\n", "");
+    const findings = parentDirectory.check;
     assert(findings.length == 1 && !findings[0].fixable); // GitIgnore's "not of the form"
 }
 
@@ -715,15 +717,15 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto p = withFiles(directory,
+    auto parentDirectory = withFiles(directory,
         "# build\n*.o\nalpha\n\n" ~ beginMarker ~ "\n/beta/\n" ~ endMarker ~ "\n/gamma/\ntmp/\n",
         "/alpha/ a.git\n/beta/ b.git\n/gamma/ c.git\n");
-    assert(p.fix.length == 0);
-    assert(p.gitIgnore.before == ["# build", "*.o", ""]);
-    assert(p.gitIgnore.nested == ["/alpha/", "/beta/", "/gamma/"]);
-    assert(p.gitIgnore.after == ["tmp/"]);
+    assert(parentDirectory.fix.length == 0);
+    assert(parentDirectory.gitIgnore.before == ["# build", "*.o", ""]);
+    assert(parentDirectory.gitIgnore.nested == ["/alpha/", "/beta/", "/gamma/"]);
+    assert(parentDirectory.gitIgnore.after == ["tmp/"]);
 
-    p.write();
+    parentDirectory.write();
     assert(buildPath(directory, ".gitignore").readText ==
         "# build\n*.o\n\n" ~ beginMarker ~ "\n/alpha/\n/beta/\n/gamma/\n" ~ endMarker ~ "\ntmp/\n");
     assert(new ParentDirectory(directory).check.length == 0); // fixed on disk too
@@ -740,11 +742,11 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto p = withFiles(directory, "*.o", "/beta/ b.git\n/alpha/ a.git\n");
-    assert(p.fix.length == 0);
-    assert(p.gitIgnore.nested == ["/alpha/", "/beta/"]);
-    assert(p.gitRepos.entries[0].directory == "/alpha/"); // .gitrepos sorted too
-    p.write();
+    auto parentDirectory = withFiles(directory, "*.o", "/beta/ b.git\n/alpha/ a.git\n");
+    assert(parentDirectory.fix.length == 0);
+    assert(parentDirectory.gitIgnore.nested == ["/alpha/", "/beta/"]);
+    assert(parentDirectory.gitRepos.gitReposEntries[0].directory == "/alpha/"); // .gitrepos sorted too
+    parentDirectory.write();
     assert(buildPath(directory, ".gitignore").readText ==
         "*.o\n" ~ beginMarker ~ "\n/alpha/\n/beta/\n" ~ endMarker ~ "\n");
 }
@@ -761,18 +763,18 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto p = withFiles(directory,
+    auto parentDirectory = withFiles(directory,
         beginMarker ~ "\n/delta/\n/beta/\n/beta/\n" ~ endMarker ~ "\n",
         "/beta/ b.git\n/alpha/ a.git\n/alpha/ a2.git\n");
-    const remaining = p.fix;
+    const remaining = parentDirectory.fix;
     assert(remaining.length == 2);
-    foreach (f; remaining)
+    foreach (finding; remaining)
     {
-        assert(!f.fixable);
+        assert(!finding.fixable);
     }
     assert(remaining[0].directory == "/alpha/" && remaining[0].message.canFind("listed 2 times"));
     assert(remaining[1].directory == "/delta/" && remaining[1].message.canFind("not in"));
-    assert(p.gitIgnore.nested == ["/alpha/", "/beta/", "/delta/"]); // /delta/ kept
+    assert(parentDirectory.gitIgnore.nested == ["/alpha/", "/beta/", "/delta/"]); // /delta/ kept
 }
 
 /// fix() on files that agree changes nothing, and a second fix() is a no-op.
@@ -787,15 +789,15 @@ unittest
     }
 
     immutable ignoreText = "*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n";
-    auto p = withFiles(directory, ignoreText, "/alpha/ a.git\n");
-    assert(p.fix.length == 0);
-    assert(p.gitIgnore.content == ignoreText);
+    auto alreadyFixed = withFiles(directory, ignoreText, "/alpha/ a.git\n");
+    assert(alreadyFixed.fix.length == 0);
+    assert(alreadyFixed.gitIgnore.content == ignoreText);
 
-    auto q = withFiles(directory, "alpha\n", "/alpha/ a.git\n");
-    q.fix();
-    immutable once = q.gitIgnore.content;
-    q.fix();
-    assert(q.gitIgnore.content == once);
+    auto needsFixing = withFiles(directory, "alpha\n", "/alpha/ a.git\n");
+    needsFixing.fix();
+    immutable once = needsFixing.gitIgnore.content;
+    needsFixing.fix();
+    assert(needsFixing.gitIgnore.content == once);
 }
 
 // --- checkDisk() ---------------------------------------------------------------
@@ -807,8 +809,8 @@ version (unittest)
     {
         import std.process : execute;
 
-        const r = execute(["git"] ~ args);
-        assert(r.status == 0, r.output);
+        const result = execute(["git"] ~ args);
+        assert(result.status == 0, result.output);
     }
 }
 
@@ -866,9 +868,9 @@ unittest
         && findings[2].message.canFind("fatal:")); // git's own message
     assert(findings[3].directory == "/other/" && findings[3].message.canFind("no remote")
         && findings[3].message.canFind("wanted.git"));
-    foreach (f; findings)
+    foreach (finding; findings)
     {
-        assert(!f.fixable);
+        assert(!finding.fixable);
     }
 }
 
