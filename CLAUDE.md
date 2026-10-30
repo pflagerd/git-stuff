@@ -55,6 +55,8 @@ Teaching them what you're doing comes first. Speed comes second.
     underscore: `private GitIgnore _gitIgnore;` behind
     `const(GitIgnore) gitIgnore() const`. D won't let a field and a
     method share a name.
+  - A name that would be a D keyword gets a trailing underscore: `real_`
+    for the real directory, since `real` is a floating-point type.
 
 ### Project facts: `README.md` and `TODO`
 - `README.md` states the project's goal: nested git repositories that are
