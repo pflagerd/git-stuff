@@ -428,6 +428,38 @@ unittest
     assert(upstream(s[1]) == "mirror/feature");
 }
 
+/// The usual no-upstream case: master in a repo made with git init and git
+/// remote add (git clone would have set an upstream). The upstream becomes
+/// origin/master, the branch she's on.
+unittest
+{
+    import parentDirectory : ParentDirectory;
+
+    immutable scratch = testDirectory("pushNested-master-upstream");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable remote = buildPath(scratch, "beta.git");
+    sh("init", "-q", "--bare", "-b", "master", remote);
+    immutable parent = buildPath(scratch, "parent");
+    immutable beta = buildPath(parent, "beta");
+    sh("init", "-q", "-b", "master", beta);
+    sh("-C", beta, "remote", "add", "origin", remote);
+    commit(beta);
+    buildPath(parent, ".gitrepos").write("/beta/ " ~ remote ~ "\n");
+    auto p = new ParentDirectory(parent);
+    p.fix();
+    p.write();
+    assert(upstream(beta) == "");
+
+    string[2] text;
+    assert(pushNested(scratch, parent, [], text) == 0, text[1]);
+    assert(upstream(beta) == "origin/master");
+    assert(tip(remote, "master") == tip(beta, "master"));
+}
+
 /// On a different branch from the one .gitrepos means: skipped, nothing pushed,
 /// and the warning says what to do.
 unittest

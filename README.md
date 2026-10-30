@@ -237,7 +237,8 @@ and reported, and you pull first.
 
 - **Upstream:** if the remote named `origin` exists and the branch has no
   upstream yet, the push to `origin` is `git push -u origin <branch>`, so
-  `origin/<branch>` becomes its upstream. An upstream already set (to any
+  `origin/<branch>` becomes its upstream: `origin/master` when you're on
+  `master`, the usual case. An upstream already set (to any
   remote) is left alone.
 - **Skipped, with a warning:** a directory that's missing or isn't a nested
   repo, a detached HEAD, a repo with no `origin` under `--origin-only`, and a
