@@ -570,11 +570,14 @@ unittest
     git("-C", cloned, "checkout", "-q", "--detach");
     assert(currentBranch(cloned) == "");
 
-    // init + remote add + fetch: no origin/HEAD, so the default is unknown.
+    // No origin/HEAD, so the default is unknown. Since git 2.48, fetch
+    // creates a missing origin/HEAD, so it's deleted to get this state on
+    // every version (RelNotes/2.48.0 in git's source).
     immutable added = buildPath(directory, "added");
     git("init", "-q", added);
     git("-C", added, "remote", "add", "origin", remote);
     git("-C", added, "fetch", "-q", "origin");
+    git("-C", added, "remote", "set-head", "origin", "--delete");
     assert(remoteDefaultBranch(added) == "");
     assert(remoteHasBranch(added, "blog"));
 
