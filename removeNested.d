@@ -36,8 +36,8 @@ ExitStatus run(string[] args, File output, File errors)
     import std.path : buildPath;
     import gitRepos : GitRepos;
 
-    CommonOptions common;
-    const parsed = parseOptions(args, common, output, errors, usage);
+    CommonOptions commonOptions;
+    const parsed = parseOptions(args, commonOptions, output, errors, usage);
     if (!parsed.proceed)
     {
         return parsed.exitStatus;
@@ -48,30 +48,30 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.usage;
     }
 
-    ParentDirectory parent;
-    if (!loadParent("remove-nested", common.directory, parent, errors))
+    ParentDirectory parentDirectory;
+    if (!loadParent("remove-nested", commonOptions.directory, parentDirectory, errors))
     {
         return ExitStatus.usage;
     }
 
     bool changed = false;
-    if (common.fix)
+    if (commonOptions.fix)
     {
-        changed = parent.check.any!(f => f.fixable);
-        parent.fix();
+        changed = parentDirectory.check.any!(finding => finding.fixable);
+        parentDirectory.fix();
     }
 
     bool notFound = false;
     foreach (argument; args[1 .. $])
     {
         immutable directory = GitRepos.normalizeDirectory(argument);
-        immutable inRepos = parent.gitRepos.gitReposEntries.any!(e => e.directory == directory);
-        immutable inIgnore = parent.gitIgnore.nested.canFind(directory);
+        immutable inRepos = parentDirectory.gitRepos.gitReposEntries.any!(gitReposEntry => gitReposEntry.directory == directory);
+        immutable inIgnore = parentDirectory.gitIgnore.nested.canFind(directory);
 
-        if (directory.length == 0 || !parent.remove(directory))
+        if (directory.length == 0 || !parentDirectory.remove(directory))
         {
-            errors.writeln("warning: ", argument, " is in neither ", parent.gitRepos.path,
-                " nor the managed block of ", parent.gitIgnore.path);
+            errors.writeln("warning: ", argument, " is in neither ", parentDirectory.gitRepos.path,
+                " nor the managed block of ", parentDirectory.gitIgnore.path);
             notFound = true;
             continue;
         }
@@ -79,7 +79,7 @@ ExitStatus run(string[] args, File output, File errors)
 
         immutable from = inRepos && inIgnore ? ".gitrepos and .gitignore"
             : inRepos ? ".gitrepos" : ".gitignore";
-        immutable onDisk = buildPath(common.directory, directory[1 .. $ - 1]);
+        immutable onDisk = buildPath(commonOptions.directory, directory[1 .. $ - 1]);
         output.writeln("removed ", directory, " from ", from,
             onDisk.exists ? "; " ~ onDisk ~ " is still on disk (remove-nested never deletes directories)"
                 : "");
@@ -89,17 +89,17 @@ ExitStatus run(string[] args, File output, File errors)
     {
         try
         {
-            parent.write();
+            parentDirectory.write();
         }
-        catch (Exception e)
+        catch (Exception exception)
         {
-            errors.writeln("remove-nested: could not write the files: ", e.msg);
+            errors.writeln("remove-nested: could not write the files: ", exception.msg);
             return ExitStatus.findings;
         }
     }
     output.flush(); // before the warnings that follow on the error stream
 
-    immutable remaining = printFindings(parent.check, errors);
+    immutable remaining = printFindings(parentDirectory.check, errors);
     return notFound || remaining ? ExitStatus.findings : ExitStatus.ok;
 }
 

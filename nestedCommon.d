@@ -60,7 +60,7 @@ struct Parsed
  * unknown or malformed option prints a message to `errors` (exit 2).
  * Options are case-sensitive, so -C is not -c.
  */
-Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions common,
+Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions commonOptions,
     File output, File errors, string usage, Extra extra)
 {
     import std.getopt : config, defaultGetoptFormatter, getopt, GetOptException;
@@ -69,8 +69,8 @@ Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions common,
     try
     {
         auto result = getopt(args, config.caseSensitive,
-            "C", "Work in <directory> instead of the current directory.", &common.directory,
-            "fix", "Repair fixable findings in .gitignore and .gitrepos first.", &common.fix,
+            "C", "Work in <directory> instead of the current directory.", &commonOptions.directory,
+            "fix", "Repair fixable findings in .gitignore and .gitrepos first.", &commonOptions.fix,
             extra);
         if (result.helpWanted)
         {
@@ -78,14 +78,14 @@ Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions common,
             return Parsed(false, ExitStatus.ok);
         }
     }
-    catch (GetOptException e)
+    catch (GetOptException exception)
     {
-        errors.writeln(args.length ? args[0] : "nested", ": ", e.msg);
+        errors.writeln(args.length ? args[0] : "nested", ": ", exception.msg);
         return Parsed(false, ExitStatus.usage);
     }
-    catch (ConvException e) // e.g. a value of the wrong type
+    catch (ConvException exception) // e.g. a value of the wrong type
     {
-        errors.writeln(args.length ? args[0] : "nested", ": ", e.msg);
+        errors.writeln(args.length ? args[0] : "nested", ": ", exception.msg);
         return Parsed(false, ExitStatus.usage);
     }
     return Parsed(true, ExitStatus.ok);
@@ -94,12 +94,12 @@ Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions common,
 // --- loading ---------------------------------------------------------------------
 
 /**
- * Loads the ParentDirectory for `directory` into `parent`. On failure prints
+ * Loads the ParentDirectory for `directory` into `parentDirectory`. On failure prints
  * why to `errors`, prefixed with `program` and naming the file (and line,
  * for a parse error), and returns false: the caller exits with
  * ExitStatus.usage, having changed nothing.
  */
-bool loadParent(string program, string directory, out ParentDirectory parent, File errors)
+bool loadParent(string program, string directory, out ParentDirectory parentDirectory, File errors)
 {
     import std.file : FileException;
     import std.path : buildPath;
@@ -109,24 +109,24 @@ bool loadParent(string program, string directory, out ParentDirectory parent, Fi
 
     try
     {
-        parent = new ParentDirectory(directory);
+        parentDirectory = new ParentDirectory(directory);
         return true;
     }
-    catch (GitIgnoreException e)
+    catch (GitIgnoreException exception)
     {
-        errors.writeln(program, ": ", buildPath(directory, ".gitignore"), ": ", e.msg);
+        errors.writeln(program, ": ", buildPath(directory, ".gitignore"), ": ", exception.msg);
     }
-    catch (GitReposException e)
+    catch (GitReposException exception)
     {
-        errors.writeln(program, ": ", buildPath(directory, ".gitrepos"), ": ", e.msg);
+        errors.writeln(program, ": ", buildPath(directory, ".gitrepos"), ": ", exception.msg);
     }
-    catch (UTFException e)
+    catch (UTFException exception)
     {
-        errors.writeln(program, ": a file in ", directory, " is not valid UTF-8: ", e.msg);
+        errors.writeln(program, ": a file in ", directory, " is not valid UTF-8: ", exception.msg);
     }
-    catch (FileException e)
+    catch (FileException exception)
     {
-        errors.writeln(program, ": ", e.msg);
+        errors.writeln(program, ": ", exception.msg);
     }
     return false;
 }
@@ -137,9 +137,9 @@ bool loadParent(string program, string directory, out ParentDirectory parent, Fi
 /// fixable ones. Returns: how many were printed.
 size_t printFindings(const Finding[] findings, File errors)
 {
-    foreach (f; findings)
+    foreach (finding; findings)
     {
-        errors.writeln("warning: ", f.message, f.fixable ? " (fixable with --fix)" : "");
+        errors.writeln("warning: ", finding.message, finding.fixable ? " (fixable with --fix)" : "");
     }
     return findings.length;
 }
@@ -238,8 +238,8 @@ string currentBranch(string repository)
     import std.process : execute;
     import std.string : strip;
 
-    const r = execute(["git", "-C", repository, "symbolic-ref", "--quiet", "--short", "HEAD"]);
-    return r.status == 0 ? r.output.strip : "";
+    const result = execute(["git", "-C", repository, "symbolic-ref", "--quiet", "--short", "HEAD"]);
+    return result.status == 0 ? result.output.strip : "";
 }
 
 /// Whether the repository has `refs/remotes/origin/<branch>` locally.
@@ -247,9 +247,9 @@ bool remoteHasBranch(string repository, string branch)
 {
     import std.process : execute;
 
-    const r = execute(["git", "-C", repository, "rev-parse", "--verify", "--quiet",
+    const result = execute(["git", "-C", repository, "rev-parse", "--verify", "--quiet",
         "refs/remotes/origin/" ~ branch]);
-    return r.status == 0;
+    return result.status == 0;
 }
 
 /**
@@ -263,10 +263,10 @@ string remoteDefaultBranch(string repository)
     import std.process : execute;
     import std.string : strip;
 
-    const r = execute(["git", "-C", repository, "symbolic-ref", "--quiet", "--short",
+    const result = execute(["git", "-C", repository, "symbolic-ref", "--quiet", "--short",
         "refs/remotes/origin/HEAD"]);
-    immutable name = r.output.strip;
-    if (r.status != 0 || !name.startsWith("origin/"))
+    immutable name = result.output.strip;
+    if (result.status != 0 || !name.startsWith("origin/"))
     {
         return "";
     }
@@ -315,7 +315,7 @@ string cloneNested(string onDisk, string directory, string url, string listedBra
         return "git clone failed";
     }
     immutable target = branchAfterClone(directory, url, listedBranch,
-        (string b) => remoteHasBranch(onDisk, b));
+        (string candidate) => remoteHasBranch(onDisk, candidate));
     if (target.length && currentBranch(onDisk) != target)
     {
         if (!runGit(["-C", onDisk, "checkout", "--quiet", target], output, errors))
@@ -366,15 +366,15 @@ unittest
 
     auto text = captured(directory, (File output, File errors) {
         string[] args = ["add-nested", "alpha"];
-        CommonOptions common;
-        assert(parseOptions(args, common, output, errors, "usage").proceed);
-        assert(common.directory == "." && !common.fix);
+        CommonOptions commonOptions;
+        assert(parseOptions(args, commonOptions, output, errors, "usage").proceed);
+        assert(commonOptions.directory == "." && !commonOptions.fix);
         assert(args == ["add-nested", "alpha"]);
 
         args = ["add-nested", "-C", "/tmp/p", "--fix", "alpha", "beta"];
-        common = CommonOptions.init;
-        assert(parseOptions(args, common, output, errors, "usage").proceed);
-        assert(common.directory == "/tmp/p" && common.fix);
+        commonOptions = CommonOptions.init;
+        assert(parseOptions(args, commonOptions, output, errors, "usage").proceed);
+        assert(commonOptions.directory == "/tmp/p" && commonOptions.fix);
         assert(args == ["add-nested", "alpha", "beta"]);
     });
     assert(text[0] == "" && text[1] == "");
@@ -391,11 +391,11 @@ unittest
 
     captured(directory, (File output, File errors) {
         string[] args = ["add-nested", "--branch", "dev", "--fix", "alpha"];
-        CommonOptions common;
+        CommonOptions commonOptions;
         string branch;
-        assert(parseOptions(args, common, output, errors, "usage",
+        assert(parseOptions(args, commonOptions, output, errors, "usage",
             "branch", "Record this branch.", &branch).proceed);
-        assert(branch == "dev" && common.fix && args == ["add-nested", "alpha"]);
+        assert(branch == "dev" && commonOptions.fix && args == ["add-nested", "alpha"]);
     });
 }
 
@@ -414,9 +414,9 @@ unittest
     {
         auto text = captured(directory, (File output, File errors) {
             string[] args = ["check-nested", flag];
-            CommonOptions common;
-            const p = parseOptions(args, common, output, errors, "Usage: check-nested [options]");
-            assert(!p.proceed && p.exitStatus == ExitStatus.ok);
+            CommonOptions commonOptions;
+            const parsed = parseOptions(args, commonOptions, output, errors, "Usage: check-nested [options]");
+            assert(!parsed.proceed && parsed.exitStatus == ExitStatus.ok);
         });
         assert(text[0].canFind("Usage: check-nested") && text[0].canFind("-C"), flag);
         assert(text[1] == "", flag);
@@ -439,9 +439,9 @@ unittest
     {
         auto text = captured(directory, (File output, File errors) {
             string[] args = bad.dup;
-            CommonOptions common;
-            const p = parseOptions(args, common, output, errors, "usage");
-            assert(!p.proceed && p.exitStatus == ExitStatus.usage, bad[1]);
+            CommonOptions commonOptions;
+            const parsed = parseOptions(args, commonOptions, output, errors, "usage");
+            assert(!parsed.proceed && parsed.exitStatus == ExitStatus.usage, bad[1]);
         });
         assert(text[0] == "" && text[1].canFind("check-nested: "), bad[1]);
     }
@@ -452,8 +452,8 @@ unittest
 unittest
 {
     static assert(is(typeof(Parsed.init.exitStatus) == ExitStatus));
-    static assert(!__traits(compiles, { Parsed p; p.exitStatus = 5; }));
-    static assert(__traits(compiles, { Parsed p; int status = p.exitStatus; }));
+    static assert(!__traits(compiles, { Parsed parsed; parsed.exitStatus = 5; }));
+    static assert(__traits(compiles, { Parsed parsed; int status = parsed.exitStatus; }));
 }
 
 // --- tests: output -------------------------------------------------------------
@@ -494,8 +494,8 @@ unittest
 /// it; otherwise the default (""). #2's example included.
 unittest
 {
-    bool has(string b) { return b == "blog"; }
-    bool none(string b) { return false; }
+    bool has(string branch) { return branch == "blog"; }
+    bool none(string branch) { return false; }
 
     immutable bootstrap = "git@github.com:pflagerd/blog-bootstrap";
     assert(branchAfterClone("/blog/", bootstrap, "bok-blog", &none) == "bok-blog"); // #2
@@ -508,8 +508,8 @@ unittest
 /// branchCanBeOmitted: decision 3 (a') in every case.
 unittest
 {
-    bool has(string b) { return b == "blog"; }
-    bool none(string b) { return false; }
+    bool has(string branch) { return branch == "blog"; }
+    bool none(string branch) { return false; }
 
     immutable bootstrap = "git@github.com:pflagerd/blog-bootstrap";
     immutable same = "git@github.com:pflagerd/blog.git";
@@ -537,8 +537,8 @@ version (unittest)
     {
         import std.process : execute;
 
-        const r = execute(["git"] ~ args);
-        assert(r.status == 0, r.output);
+        const result = execute(["git"] ~ args);
+        assert(result.status == 0, result.output);
     }
 }
 

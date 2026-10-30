@@ -38,9 +38,9 @@ or a file that can't be read.
  */
 ExitStatus run(string[] args, File output, File errors)
 {
-    CommonOptions common;
+    CommonOptions commonOptions;
     string branch, url, clone;
-    const parsed = parseOptions(args, common, output, errors, usage,
+    const parsed = parseOptions(args, commonOptions, output, errors, usage,
         "branch", "Record this branch instead of the current one.", &branch,
         "url", "Record this url instead of the origin remote's.", &url,
         "clone", "Clone this url first, then register the clone.", &clone);
@@ -51,7 +51,7 @@ ExitStatus run(string[] args, File output, File errors)
     immutable arguments = args[1 .. $].idup;
     if (clone.length)
     {
-        return cloneAndAdd(common, clone, branch, url, arguments, output, errors);
+        return cloneAndAdd(commonOptions, clone, branch, url, arguments, output, errors);
     }
     if (arguments.length == 0)
     {
@@ -64,19 +64,19 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.usage;
     }
 
-    ParentDirectory parent;
-    if (!loadParent("add-nested", common.directory, parent, errors))
+    ParentDirectory parentDirectory;
+    if (!loadParent("add-nested", commonOptions.directory, parentDirectory, errors))
     {
         return ExitStatus.usage;
     }
 
     // All or nothing: work out every entry first, reporting every problem.
-    GitReposEntry[] entries;
+    GitReposEntry[] gitReposEntries;
     bool failed = false;
     foreach (argument; arguments)
     {
-        GitReposEntry entry;
-        immutable problem = entryFor(common.directory, argument, branch, url, entry);
+        GitReposEntry gitReposEntry;
+        immutable problem = entryFor(commonOptions.directory, argument, branch, url, gitReposEntry);
         if (problem.length)
         {
             errors.writeln("add-nested: ", argument, ": ", problem);
@@ -84,7 +84,7 @@ ExitStatus run(string[] args, File output, File errors)
         }
         else
         {
-            entries ~= entry;
+            gitReposEntries ~= gitReposEntry;
         }
     }
     if (failed)
@@ -93,35 +93,36 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.findings;
     }
 
-    if (common.fix)
+    if (commonOptions.fix)
     {
-        parent.fix();
+        parentDirectory.fix();
     }
-    foreach (entry; entries)
+    foreach (gitReposEntry; gitReposEntries)
     {
-        parent.add(entry);
+        parentDirectory.add(gitReposEntry);
     }
     try
     {
-        parent.write();
+        parentDirectory.write();
     }
-    catch (Exception e)
+    catch (Exception exception)
     {
-        errors.writeln("add-nested: could not write the files: ", e.msg);
+        errors.writeln("add-nested: could not write the files: ", exception.msg);
         return ExitStatus.findings;
     }
-    foreach (entry; entries)
+    foreach (gitReposEntry; gitReposEntries)
     {
-        output.writeln("added ", entry.directory, " ", entry.url,
-            entry.branch.length ? " " ~ entry.branch : "");
+        output.writeln("added ", gitReposEntry.directory, " ", gitReposEntry.url,
+            gitReposEntry.branch.length ? " " ~ gitReposEntry.branch : "");
     }
-    return checkWritten(common.directory, output, errors);
+    return checkWritten(commonOptions.directory, output, errors);
 }
 
 /**
  * The checks after writing, on the files as written, not the objects in
  * memory: add() appends, and only write() sorts, so the objects would look
  * unsorted. Returns: the exit status.
+ * `parentDirectory` is a path, not a ParentDirectory, on purpose.
  */
 ExitStatus checkWritten(string parentDirectory, File output, File errors)
 {
@@ -143,7 +144,7 @@ ExitStatus checkWritten(string parentDirectory, File output, File errors)
  *
  * Returns: the exit status.
  */
-ExitStatus cloneAndAdd(CommonOptions common, string url, string branch, string urlOption,
+ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, string urlOption,
     const string[] arguments, File output, File errors)
 {
     import std.file : exists;
@@ -162,8 +163,8 @@ ExitStatus cloneAndAdd(CommonOptions common, string url, string branch, string u
         return ExitStatus.usage;
     }
 
-    ParentDirectory parent;
-    if (!loadParent("add-nested", common.directory, parent, errors))
+    ParentDirectory parentDirectory;
+    if (!loadParent("add-nested", commonOptions.directory, parentDirectory, errors))
     {
         return ExitStatus.usage;
     }
@@ -201,7 +202,7 @@ ExitStatus cloneAndAdd(CommonOptions common, string url, string branch, string u
         errors.writeln("add-nested: ", argument, ": ", invalid, "; nothing was cloned");
         return ExitStatus.findings;
     }
-    immutable onDisk = buildPath(common.directory, directory[1 .. $ - 1]);
+    immutable onDisk = buildPath(commonOptions.directory, directory[1 .. $ - 1]);
     if (onDisk.exists)
     {
         errors.writeln("add-nested: ", onDisk, " already exists; nothing was cloned"
@@ -221,32 +222,32 @@ ExitStatus cloneAndAdd(CommonOptions common, string url, string branch, string u
 
     // Registered like an existing clone; the url recorded is what git
     // stored, which for her ssh urls is exactly what she typed.
-    GitReposEntry entry;
-    immutable problem = entryFor(common.directory, argument, branch, "", entry);
+    GitReposEntry gitReposEntry;
+    immutable problem = entryFor(commonOptions.directory, argument, branch, "", gitReposEntry);
     if (problem.length)
     {
         errors.writeln("add-nested: ", argument, ": cloned, but ", problem,
             "; not registered");
         return ExitStatus.findings;
     }
-    if (common.fix)
+    if (commonOptions.fix)
     {
-        parent.fix();
+        parentDirectory.fix();
     }
-    parent.add(entry);
+    parentDirectory.add(gitReposEntry);
     try
     {
-        parent.write();
+        parentDirectory.write();
     }
-    catch (Exception e)
+    catch (Exception exception)
     {
         errors.writeln("add-nested: cloned ", onDisk, ", but could not write the files: ",
-            e.msg, " (the clone is kept; add-nested ", argument, " registers it)");
+            exception.msg, " (the clone is kept; add-nested ", argument, " registers it)");
         return ExitStatus.findings;
     }
-    output.writeln("added ", entry.directory, " ", entry.url,
-        entry.branch.length ? " " ~ entry.branch : "");
-    return checkWritten(common.directory, output, errors);
+    output.writeln("added ", gitReposEntry.directory, " ", gitReposEntry.url,
+        gitReposEntry.branch.length ? " " ~ gitReposEntry.branch : "");
+    return checkWritten(commonOptions.directory, output, errors);
 }
 
 /**
@@ -268,7 +269,7 @@ string directoryProblem(string argument)
     {
         return "not a nested directory";
     }
-    if (directory[1 .. $ - 1].split("/").canFind!(c => c == "." || c == ".."))
+    if (directory[1 .. $ - 1].split("/").canFind!(component => component == "." || component == ".."))
     {
         return "'.' and '..' are not allowed; give the directory relative to the parent";
     }
@@ -279,11 +280,12 @@ string directoryProblem(string argument)
  * Works out the .gitrepos entry for `argument`, a nested directory relative
  * to `parentDirectory`. `branch` and `url` are the --branch and --url
  * values ("" when not given).
+ * `parentDirectory` is a path, not a ParentDirectory, on purpose.
  *
- * Returns: "" and the entry in `entry`, or why there can't be one.
+ * Returns: "" and the entry in `gitReposEntry`, or why there can't be one.
  */
 string entryFor(string parentDirectory, string argument, string branch, string url,
-    out GitReposEntry entry)
+    out GitReposEntry gitReposEntry)
 {
     import std.path : buildPath;
 
@@ -319,12 +321,12 @@ string entryFor(string parentDirectory, string argument, string branch, string u
         // origin/HEAD only describes origin, so it is unknown for another url.
         immutable remoteDefault = recordedUrl == origin ? remoteDefaultBranch(onDisk) : "";
         immutable omit = branchCanBeOmitted(directory, recordedUrl, current,
-            (string b) => recordedUrl == origin && remoteHasBranch(onDisk, b), remoteDefault);
+            (string candidate) => recordedUrl == origin && remoteHasBranch(onDisk, candidate), remoteDefault);
         recordedBranch = omit ? "" : current;
     }
 
-    entry = GitReposEntry(directory, recordedUrl, recordedBranch);
-    immutable invalid = GitRepos.validate(entry);
+    gitReposEntry = GitReposEntry(directory, recordedUrl, recordedBranch);
+    immutable invalid = GitRepos.validate(gitReposEntry);
     return invalid is null ? "" : invalid;
 }
 
@@ -335,8 +337,8 @@ string originUrl(string repository)
     import std.process : execute;
     import std.string : strip;
 
-    const r = execute(["git", "-C", repository, "config", "--get", "remote.origin.url"]);
-    return r.status == 0 ? r.output.strip : "";
+    const result = execute(["git", "-C", repository, "config", "--get", "remote.origin.url"]);
+    return result.status == 0 ? result.output.strip : "";
 }
 
 version (unittest)
@@ -383,9 +385,9 @@ version (unittest)
         git("init", "-q", "-b", branches[0], seed);
         git("-C", seed, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
             "--allow-empty", "-m", "init");
-        foreach (b; branches)
+        foreach (branch; branches)
         {
-            git("-C", seed, "push", "-q", remote, branches[0] ~ ":" ~ b);
+            git("-C", seed, "push", "-q", remote, branches[0] ~ ":" ~ branch);
         }
         return remote;
     }
@@ -503,17 +505,17 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    immutable a = makeRemote(scratch, "alpha", "main");
-    immutable b = makeRemote(scratch, "beta", "main");
+    immutable alphaRemote = makeRemote(scratch, "alpha", "main");
+    immutable betaRemote = makeRemote(scratch, "beta", "main");
     immutable parent = buildPath(scratch, "parent");
-    git("clone", "-q", a, buildPath(parent, "alpha"));
-    git("clone", "-q", b, buildPath(parent, "beta"));
+    git("clone", "-q", alphaRemote, buildPath(parent, "alpha"));
+    git("clone", "-q", betaRemote, buildPath(parent, "beta"));
 
     string[2] text;
     assert(addNested(scratch, parent, ["beta"], text) == 0, text[1]);
     assert(addNested(scratch, parent, ["alpha"], text) == 0, text[1]);
     assert(text[1] == "");
-    assert(files(parent)[0] == "/alpha/ " ~ a ~ "\n/beta/ " ~ b ~ "\n");
+    assert(files(parent)[0] == "/alpha/ " ~ alphaRemote ~ "\n/beta/ " ~ betaRemote ~ "\n");
 }
 
 /// Several at once, all processed (#9).
@@ -525,15 +527,15 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    immutable a = makeRemote(scratch, "alpha", "main");
-    immutable b = makeRemote(scratch, "beta", "main");
+    immutable alphaRemote = makeRemote(scratch, "alpha", "main");
+    immutable betaRemote = makeRemote(scratch, "beta", "main");
     immutable parent = buildPath(scratch, "parent");
-    git("clone", "-q", a, buildPath(parent, "alpha"));
-    git("clone", "-q", b, buildPath(parent, "tools", "beta"));
+    git("clone", "-q", alphaRemote, buildPath(parent, "alpha"));
+    git("clone", "-q", betaRemote, buildPath(parent, "tools", "beta"));
 
     string[2] text;
     assert(addNested(scratch, parent, ["alpha", "tools/beta"], text) == 0, text[1]);
-    assert(files(parent) == ["/alpha/ " ~ a ~ "\n/tools/beta/ " ~ b ~ "\n",
+    assert(files(parent) == ["/alpha/ " ~ alphaRemote ~ "\n/tools/beta/ " ~ betaRemote ~ "\n",
         beginMarker ~ "\n/alpha/\n/tools/beta/\n" ~ endMarker ~ "\n"]);
 }
 
@@ -549,12 +551,12 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    immutable a = makeRemote(scratch, "alpha", "main");
+    immutable alphaRemote = makeRemote(scratch, "alpha", "main");
     immutable parent = buildPath(scratch, "parent");
-    git("clone", "-q", a, buildPath(parent, "alpha"));
+    git("clone", "-q", alphaRemote, buildPath(parent, "alpha"));
     buildPath(parent, "plain").mkdirRecurse;                          // not a repository
     git("init", "-q", buildPath(parent, "lonely"));                   // no origin remote
-    git("clone", "-q", a, buildPath(parent, "detached"));
+    git("clone", "-q", alphaRemote, buildPath(parent, "detached"));
     git("-C", buildPath(parent, "detached"), "checkout", "-q", "--detach");
 
     string[2] text;
@@ -609,9 +611,9 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    immutable a = makeRemote(scratch, "alpha", "main");
+    immutable alphaRemote = makeRemote(scratch, "alpha", "main");
     immutable parent = buildPath(scratch, "parent");
-    git("clone", "-q", a, buildPath(parent, "alpha"));
+    git("clone", "-q", alphaRemote, buildPath(parent, "alpha"));
     parent.mkdirRecurse;
     buildPath(parent, ".gitignore").write("gamma\n"); // a loose line for /gamma/
     buildPath(parent, ".gitrepos").write("/gamma/ g.git\n");

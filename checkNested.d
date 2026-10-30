@@ -30,8 +30,8 @@ ExitStatus run(string[] args, File output, File errors)
     import std.algorithm.iteration : filter;
     import std.algorithm.searching : count;
 
-    CommonOptions common;
-    const parsed = parseOptions(args, common, output, errors, usage);
+    CommonOptions commonOptions;
+    const parsed = parseOptions(args, commonOptions, output, errors, usage);
     if (!parsed.proceed)
     {
         return parsed.exitStatus;
@@ -42,23 +42,23 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.usage;
     }
 
-    ParentDirectory parent;
-    if (!loadParent("check-nested", common.directory, parent, errors))
+    ParentDirectory parentDirectory;
+    if (!loadParent("check-nested", commonOptions.directory, parentDirectory, errors))
     {
         return ExitStatus.usage;
     }
 
-    if (common.fix)
+    if (commonOptions.fix)
     {
-        immutable fixable = parent.check.filter!(f => f.fixable).count;
-        parent.fix();
+        immutable fixable = parentDirectory.check.filter!(finding => finding.fixable).count;
+        parentDirectory.fix();
         try
         {
-            parent.write();
+            parentDirectory.write();
         }
-        catch (Exception e)
+        catch (Exception exception)
         {
-            errors.writeln("check-nested: could not write the fixed files: ", e.msg);
+            errors.writeln("check-nested: could not write the fixed files: ", exception.msg);
             return ExitStatus.findings;
         }
         if (fixable)
@@ -70,7 +70,7 @@ ExitStatus run(string[] args, File output, File errors)
         }
     }
 
-    immutable remaining = printFindings(parent.check ~ parent.checkDisk, errors);
+    immutable remaining = printFindings(parentDirectory.check ~ parentDirectory.checkDisk, errors);
     return remaining ? ExitStatus.findings : ExitStatus.ok;
 }
 

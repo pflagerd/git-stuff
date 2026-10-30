@@ -32,8 +32,8 @@ file that can't be read.
  */
 ExitStatus run(string[] args, File output, File errors)
 {
-    CommonOptions common;
-    const parsed = parseOptions(args, common, output, errors, usage);
+    CommonOptions commonOptions;
+    const parsed = parseOptions(args, commonOptions, output, errors, usage);
     if (!parsed.proceed)
     {
         return parsed.exitStatus;
@@ -44,37 +44,37 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.usage;
     }
 
-    ParentDirectory parent;
-    if (!loadParent("pull-nested", common.directory, parent, errors))
+    ParentDirectory parentDirectory;
+    if (!loadParent("pull-nested", commonOptions.directory, parentDirectory, errors))
     {
         return ExitStatus.usage;
     }
-    if (common.fix)
+    if (commonOptions.fix)
     {
-        parent.fix();
+        parentDirectory.fix();
         try
         {
-            parent.write();
+            parentDirectory.write();
         }
-        catch (Exception e)
+        catch (Exception exception)
         {
-            errors.writeln("pull-nested: could not write the fixed files: ", e.msg);
+            errors.writeln("pull-nested: could not write the fixed files: ", exception.msg);
             return ExitStatus.findings;
         }
     }
-    bool failed = printFindings(parent.check, errors) > 0;
+    bool failed = printFindings(parentDirectory.check, errors) > 0;
 
     bool[string] seen;
-    foreach (entry; parent.gitRepos.gitReposEntries)
+    foreach (gitReposEntry; parentDirectory.gitRepos.gitReposEntries)
     {
-        if (entry.directory in seen)
+        if (gitReposEntry.directory in seen)
         {
             continue; // a duplicate; check() has already reported it
         }
-        seen[entry.directory] = true;
+        seen[gitReposEntry.directory] = true;
 
-        output.writeln("== ", entry.directory);
-        if (!pullOne(common.directory, entry, output, errors))
+        output.writeln("== ", gitReposEntry.directory);
+        if (!pullOne(commonOptions.directory, gitReposEntry, output, errors))
         {
             failed = true;
         }
@@ -86,24 +86,25 @@ ExitStatus run(string[] args, File output, File errors)
 /**
  * Clones or fast-forwards one nested repo. Problems are reported on `errors`
  * prefixed "pull-nested: <directory>: ".
+ * `parentDirectory` is a path, not a ParentDirectory, on purpose.
  *
  * Returns: false if anything went wrong or needs her attention.
  */
-bool pullOne(string parentDirectory, const GitReposEntry entry, File output, File errors)
+bool pullOne(string parentDirectory, const GitReposEntry gitReposEntry, File output, File errors)
 {
     import std.file : exists;
     import std.path : buildPath;
 
-    immutable onDisk = buildPath(parentDirectory, entry.directory[1 .. $ - 1]);
+    immutable onDisk = buildPath(parentDirectory, gitReposEntry.directory[1 .. $ - 1]);
     void problem(string message)
     {
         output.flush();
-        errors.writeln("pull-nested: ", entry.directory, ": ", message);
+        errors.writeln("pull-nested: ", gitReposEntry.directory, ": ", message);
     }
 
     if (!onDisk.exists)
     {
-        immutable failure = cloneNested(onDisk, entry.directory, entry.url, entry.branch,
+        immutable failure = cloneNested(onDisk, gitReposEntry.directory, gitReposEntry.url, gitReposEntry.branch,
             output, errors);
         if (failure.length)
         {
@@ -113,7 +114,7 @@ bool pullOne(string parentDirectory, const GitReposEntry entry, File output, Fil
         return true;
     }
 
-    immutable notRepository = ParentDirectory.repositoryProblem(entry.directory, onDisk);
+    immutable notRepository = ParentDirectory.repositoryProblem(gitReposEntry.directory, onDisk);
     if (notRepository.length)
     {
         problem(notRepository ~ "; skipped");
@@ -122,8 +123,8 @@ bool pullOne(string parentDirectory, const GitReposEntry entry, File output, Fil
 
     // Never switch branches in an existing repo (decision 6 part 2): she may
     // be working there. Just say so if it isn't where .gitrepos points.
-    string expected = branchAfterClone(entry.directory, entry.url, entry.branch,
-        (string b) => remoteHasBranch(onDisk, b));
+    string expected = branchAfterClone(gitReposEntry.directory, gitReposEntry.url, gitReposEntry.branch,
+        (string candidate) => remoteHasBranch(onDisk, candidate));
     if (expected.length == 0)
     {
         expected = remoteDefaultBranch(onDisk); // "" if unknown: nothing to compare
@@ -202,9 +203,9 @@ version (unittest)
         sh("init", "-q", "--bare", "-b", branches[0], remote);
         sh("init", "-q", "-b", branches[0], seed);
         commit(seed, "init");
-        foreach (b; branches)
+        foreach (branch; branches)
         {
-            sh("-C", seed, "push", "-q", remote, branches[0] ~ ":" ~ b);
+            sh("-C", seed, "push", "-q", remote, branches[0] ~ ":" ~ branch);
         }
         return remote;
     }
@@ -234,9 +235,9 @@ version (unittest)
         buildPath(parent, ".gitrepos").write(text);
         if (!alone)
         {
-            auto p = new ParentDirectory(parent);
-            p.fix();
-            p.write();
+            auto parentDirectory = new ParentDirectory(parent);
+            parentDirectory.fix();
+            parentDirectory.write();
         }
     }
 }
@@ -369,10 +370,10 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    immutable a = makeRemote(scratch, "alpha", "main");
-    immutable b = makeRemote(scratch, "beta", "main");
+    immutable alphaRemote = makeRemote(scratch, "alpha", "main");
+    immutable betaRemote = makeRemote(scratch, "beta", "main");
     immutable parent = buildPath(scratch, "parent");
-    gitrepos(parent, "/alpha/ " ~ a ~ "\n/beta/ " ~ b ~ "\n");
+    gitrepos(parent, "/alpha/ " ~ alphaRemote ~ "\n/beta/ " ~ betaRemote ~ "\n");
     string[2] text;
     assert(pullNested(scratch, parent, [], text) == 0, text[1]);
 

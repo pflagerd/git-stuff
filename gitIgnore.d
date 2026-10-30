@@ -153,24 +153,24 @@ class GitIgnore
         return findings;
     }
 
-    /// Whether `entry` looks like `/directory/` (or `/a/b/`): a leading and
+    /// Whether `pattern` looks like `/directory/` (or `/a/b/`): a leading and
     /// trailing slash with something between them, and no "//" anywhere.
-    static bool isDirectoryPattern(string entry) @safe pure nothrow
+    static bool isDirectoryPattern(string pattern) @safe pure nothrow
     {
         import std.algorithm.searching : canFind;
 
-        return entry.length > 2 && entry[0] == '/' && entry[$ - 1] == '/'
-            && !entry.canFind("//");
+        return pattern.length > 2 && pattern[0] == '/' && pattern[$ - 1] == '/'
+            && !pattern.canFind("//");
     }
 
-    /// A sorted copy of `entries` with repeats removed.
-    static string[] sortedUnique(const string[] entries) @safe pure
+    /// A sorted copy of `patterns` with repeats removed.
+    static string[] sortedUnique(const string[] patterns) @safe pure
     {
         import std.algorithm.iteration : uniq;
         import std.algorithm.sorting : sort;
         import std.array : array;
 
-        return entries.dup.sort.uniq.array;
+        return patterns.dup.sort.uniq.array;
     }
 
     /**
@@ -279,52 +279,52 @@ class GitIgnore
 /// No block: everything is `before`.
 unittest
 {
-    auto p = GitIgnore.parse([".idea/", "*.o"]);
-    assert(p.before == [".idea/", "*.o"]);
-    assert(p.nested.length == 0);
-    assert(p.after.length == 0);
+    auto gitIgnore = GitIgnore.parse([".idea/", "*.o"]);
+    assert(gitIgnore.before == [".idea/", "*.o"]);
+    assert(gitIgnore.nested.length == 0);
+    assert(gitIgnore.after.length == 0);
 }
 
 /// Empty file.
 unittest
 {
-    auto p = GitIgnore.parse([]);
-    assert(p.before.length == 0 && p.nested.length == 0 && p.after.length == 0);
+    auto gitIgnore = GitIgnore.parse([]);
+    assert(gitIgnore.before.length == 0 && gitIgnore.nested.length == 0 && gitIgnore.after.length == 0);
 }
 
 /// A block in the middle, with comments and blank lines around it kept.
 unittest
 {
-    auto p = GitIgnore.parse([
+    auto gitIgnore = GitIgnore.parse([
         "# build output", "*.o", "",
         beginMarker, "/alpha/", "/beta/", endMarker,
         "", "tmp/",
     ]);
-    assert(p.before == ["# build output", "*.o", ""]);
-    assert(p.nested == ["/alpha/", "/beta/"]);
-    assert(p.after == ["", "tmp/"]);
+    assert(gitIgnore.before == ["# build output", "*.o", ""]);
+    assert(gitIgnore.nested == ["/alpha/", "/beta/"]);
+    assert(gitIgnore.after == ["", "tmp/"]);
 }
 
 /// Blank lines inside the block are skipped; file order is kept (no sorting).
 unittest
 {
-    auto p = GitIgnore.parse([beginMarker, "/beta/", "", "/alpha/", endMarker]);
-    assert(p.nested == ["/beta/", "/alpha/"]);
+    auto gitIgnore = GitIgnore.parse([beginMarker, "/beta/", "", "/alpha/", endMarker]);
+    assert(gitIgnore.nested == ["/beta/", "/alpha/"]);
 }
 
 /// An empty block.
 unittest
 {
-    auto p = GitIgnore.parse(["*.o", beginMarker, endMarker]);
-    assert(p.before == ["*.o"]);
-    assert(p.nested.length == 0);
+    auto gitIgnore = GitIgnore.parse(["*.o", beginMarker, endMarker]);
+    assert(gitIgnore.before == ["*.o"]);
+    assert(gitIgnore.nested.length == 0);
 }
 
 /// Only an exact marker line counts; near-misses are ordinary lines.
 unittest
 {
-    auto p = GitIgnore.parse([beginMarker ~ " ", "# begin nested repos"]);
-    assert(p.before == [beginMarker ~ " ", "# begin nested repos"]);
+    auto gitIgnore = GitIgnore.parse([beginMarker ~ " ", "# begin nested repos"]);
+    assert(gitIgnore.before == [beginMarker ~ " ", "# begin nested repos"]);
 }
 
 /// Malformed blocks throw, naming the line.
@@ -333,21 +333,21 @@ unittest
     import std.algorithm.searching : canFind;
     import std.exception : collectException;
 
-    auto e = collectException!GitIgnoreException(
+    auto exception = collectException!GitIgnoreException(
         GitIgnore.parse(["*.o", endMarker]));
-    assert(e && e.msg.canFind("line 2") && e.msg.canFind("without a BEGIN"));
+    assert(exception && exception.msg.canFind("line 2") && exception.msg.canFind("without a BEGIN"));
 
-    e = collectException!GitIgnoreException(
+    exception = collectException!GitIgnoreException(
         GitIgnore.parse([beginMarker, "/alpha/"]));
-    assert(e && e.msg.canFind("line 1") && e.msg.canFind("without an END"));
+    assert(exception && exception.msg.canFind("line 1") && exception.msg.canFind("without an END"));
 
-    e = collectException!GitIgnoreException(
+    exception = collectException!GitIgnoreException(
         GitIgnore.parse([beginMarker, beginMarker, endMarker]));
-    assert(e && e.msg.canFind("line 2") && e.msg.canFind("inside the block"));
+    assert(exception && exception.msg.canFind("line 2") && exception.msg.canFind("inside the block"));
 
-    e = collectException!GitIgnoreException(
+    exception = collectException!GitIgnoreException(
         GitIgnore.parse([beginMarker, endMarker, beginMarker, endMarker]));
-    assert(e && e.msg.canFind("line 3") && e.msg.canFind("second managed block"));
+    assert(exception && exception.msg.canFind("line 3") && exception.msg.canFind("second managed block"));
 }
 
 // --- test helpers --------------------------------------------------------
@@ -384,12 +384,12 @@ unittest
         && missing.after.length == 0);
     assert(missing.endsWithNewline);
 
-    auto g = fromText(directory,
+    auto gitIgnore = fromText(directory,
         "*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\ntmp/\n");
-    assert(g.before == ["*.o"]);
-    assert(g.nested == ["/alpha/"]);
-    assert(g.after == ["tmp/"]);
-    assert(g.endsWithNewline);
+    assert(gitIgnore.before == ["*.o"]);
+    assert(gitIgnore.nested == ["/alpha/"]);
+    assert(gitIgnore.after == ["tmp/"]);
+    assert(gitIgnore.endsWithNewline);
 
     assert(!fromText(directory, "*.o\ntmp/").endsWithNewline);
 }
@@ -402,11 +402,11 @@ unittest
     immutable directory = testDirectory("content-sorted");
     scope (exit) directory.rmdirRecurse;
 
-    auto g = fromText(directory,
+    auto gitIgnore = fromText(directory,
         "*.o\n" ~ beginMarker ~ "\n/beta/\n/alpha/\n" ~ endMarker ~ "\ntmp/\n");
-    assert(g.content ==
+    assert(gitIgnore.content ==
         "*.o\n" ~ beginMarker ~ "\n/alpha/\n/beta/\n" ~ endMarker ~ "\ntmp/\n");
-    assert(g.nested == ["/beta/", "/alpha/"]); // content() is const: no sorting in place
+    assert(gitIgnore.nested == ["/beta/", "/alpha/"]); // content() is const: no sorting in place
 }
 
 /// Adding to a file with no block appends the block, ending with '\n' even
@@ -416,9 +416,9 @@ unittest
     immutable directory = testDirectory("content-add");
     scope (exit) directory.rmdirRecurse;
 
-    auto g = fromText(directory, "*.o\ntmp/");
-    g.nested ~= "/gamma/";
-    assert(g.content == "*.o\ntmp/\n" ~ beginMarker ~ "\n/gamma/\n" ~ endMarker ~ "\n");
+    auto gitIgnore = fromText(directory, "*.o\ntmp/");
+    gitIgnore.nested ~= "/gamma/";
+    assert(gitIgnore.content == "*.o\ntmp/\n" ~ beginMarker ~ "\n/gamma/\n" ~ endMarker ~ "\n");
 }
 
 /// With lines after the block, the original final newline (or none) is kept.
@@ -427,8 +427,8 @@ unittest
     immutable directory = testDirectory("content-newline");
     scope (exit) directory.rmdirRecurse;
 
-    auto g = fromText(directory, beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\ntmp/");
-    assert(g.content == beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\ntmp/");
+    auto gitIgnore = fromText(directory, beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\ntmp/");
+    assert(gitIgnore.content == beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\ntmp/");
 }
 
 /// An empty block is left out; nothing at all gives "".
@@ -437,9 +437,9 @@ unittest
     immutable directory = testDirectory("content-empty");
     scope (exit) directory.rmdirRecurse;
 
-    auto g = fromText(directory, "*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n");
-    g.nested = [];
-    assert(g.content == "*.o\n");
+    auto gitIgnore = fromText(directory, "*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n");
+    gitIgnore.nested = [];
+    assert(gitIgnore.content == "*.o\n");
 
     assert(fromText(directory, "").content == "");
 }
@@ -455,10 +455,10 @@ unittest
     immutable directory = testDirectory("write-default");
     scope (exit) directory.rmdirRecurse;
 
-    auto g = fromText(directory, "*.o\n");
-    g.nested ~= "/alpha/";
-    g.write();
-    assert(g.path.readText == "*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n");
+    auto gitIgnore = fromText(directory, "*.o\n");
+    gitIgnore.nested ~= "/alpha/";
+    gitIgnore.write();
+    assert(gitIgnore.path.readText == "*.o\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n");
     assert(dirEntries(directory, SpanMode.shallow).count == 1); // just .gitignore
 }
 
@@ -470,12 +470,12 @@ unittest
     immutable directory = testDirectory("write-explicit");
     scope (exit) directory.rmdirRecurse;
 
-    auto g = fromText(directory, "*.o\n");
-    g.nested ~= "/alpha/";
+    auto gitIgnore = fromText(directory, "*.o\n");
+    gitIgnore.nested ~= "/alpha/";
     immutable other = buildPath(directory, "other");
-    g.write(other);
-    assert(other.readText == g.content);
-    assert(g.path.readText == "*.o\n");
+    gitIgnore.write(other);
+    assert(other.readText == gitIgnore.content);
+    assert(gitIgnore.path.readText == "*.o\n");
 }
 
 /// A missing file that would be empty is not created.
@@ -484,9 +484,9 @@ unittest
     immutable directory = testDirectory("write-nothing");
     scope (exit) directory.rmdirRecurse;
 
-    auto g = new GitIgnore(buildPath(directory, ".gitignore"));
-    g.write();
-    assert(!g.path.exists);
+    auto gitIgnore = new GitIgnore(buildPath(directory, ".gitignore"));
+    gitIgnore.write();
+    assert(!gitIgnore.path.exists);
 }
 
 // --- round trip ----------------------------------------------------------
@@ -503,7 +503,7 @@ unittest
         directory.rmdirRecurse;
     }
 
-    enum b = beginMarker, e = endMarker;
+    enum b = beginMarker, exception = endMarker;
     immutable string[] files = [
         "",                                           // empty file
         "*.o\ntmp/\n",                                // no block
@@ -511,11 +511,11 @@ unittest
         "*.o\r\ntmp/\r\n",                            // CRLF
         "\n\n# comment\n\n",                          // only blank lines and a comment
         "*.log\n!keep.log\n",                         // negation order kept
-        "*.o\n" ~ b ~ "\n/alpha/\n/beta/\n" ~ e ~ "\n",                 // block last
-        b ~ "\n/alpha/\n" ~ e ~ "\n",                                   // only a block
-        "# top\n\n" ~ b ~ "\n/alpha/\n" ~ e ~ "\n\n# bottom\ntmp/\n",   // block in the middle
-        "*.o\r\n" ~ b ~ "\n/alpha/\n" ~ e ~ "\ntmp/\r\n",               // CRLF around a block
-        b ~ "\n/alpha/\n" ~ e ~ "\ntmp/",                               // after, no final newline
+        "*.o\n" ~ b ~ "\n/alpha/\n/beta/\n" ~ exception ~ "\n",                 // block last
+        b ~ "\n/alpha/\n" ~ exception ~ "\n",                                   // only a block
+        "# top\n\n" ~ b ~ "\n/alpha/\n" ~ exception ~ "\n\n# bottom\ntmp/\n",   // block in the middle
+        "*.o\r\n" ~ b ~ "\n/alpha/\n" ~ exception ~ "\ntmp/\r\n",               // CRLF around a block
+        b ~ "\n/alpha/\n" ~ exception ~ "\ntmp/",                               // after, no final newline
         "  spaced  \n\\#escaped\n\\!escaped\n",       // leading/trailing spaces, escapes
     ];
 
@@ -523,10 +523,10 @@ unittest
     {
         immutable file = buildPath(directory, ".gitignore");
         file.write(original);
-        auto g = new GitIgnore(file);
-        assert(g.content == original, "content() differs for case " ~ i.to!string);
+        auto gitIgnore = new GitIgnore(file);
+        assert(gitIgnore.content == original, "content() differs for case " ~ i.to!string);
 
-        g.write();
+        gitIgnore.write();
         assert(cast(string) file.read == original, "write() differs for case " ~ i.to!string);
     }
 }
@@ -542,7 +542,7 @@ unittest
         directory.rmdirRecurse;
     }
 
-    enum b = beginMarker, e = endMarker;
+    enum b = beginMarker, exception = endMarker;
     string through(string text)
     {
         immutable file = buildPath(directory, ".gitignore");
@@ -551,15 +551,15 @@ unittest
     }
 
     // An unsorted block comes back sorted.
-    assert(through(b ~ "\n/beta/\n/alpha/\n" ~ e ~ "\n") == b ~ "\n/alpha/\n/beta/\n" ~ e ~ "\n");
+    assert(through(b ~ "\n/beta/\n/alpha/\n" ~ exception ~ "\n") == b ~ "\n/alpha/\n/beta/\n" ~ exception ~ "\n");
     // Repeated block entries are dropped.
-    assert(through(b ~ "\n/beta/\n/alpha/\n/beta/\n" ~ e ~ "\n") == b ~ "\n/alpha/\n/beta/\n" ~ e ~ "\n");
+    assert(through(b ~ "\n/beta/\n/alpha/\n/beta/\n" ~ exception ~ "\n") == b ~ "\n/alpha/\n/beta/\n" ~ exception ~ "\n");
     // Blank lines inside the block are dropped.
-    assert(through(b ~ "\n/alpha/\n\n/beta/\n" ~ e ~ "\n") == b ~ "\n/alpha/\n/beta/\n" ~ e ~ "\n");
+    assert(through(b ~ "\n/alpha/\n\n/beta/\n" ~ exception ~ "\n") == b ~ "\n/alpha/\n/beta/\n" ~ exception ~ "\n");
     // An empty block is removed.
-    assert(through("*.o\n" ~ b ~ "\n" ~ e ~ "\ntmp/\n") == "*.o\ntmp/\n");
+    assert(through("*.o\n" ~ b ~ "\n" ~ exception ~ "\ntmp/\n") == "*.o\ntmp/\n");
     // A block at the very end gains a final newline.
-    assert(through("*.o\n" ~ b ~ "\n/alpha/\n" ~ e) == "*.o\n" ~ b ~ "\n/alpha/\n" ~ e ~ "\n");
+    assert(through("*.o\n" ~ b ~ "\n/alpha/\n" ~ exception) == "*.o\n" ~ b ~ "\n/alpha/\n" ~ exception ~ "\n");
 }
 
 // --- check() -------------------------------------------------------------
@@ -573,8 +573,8 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto g = fromText(directory, beginMarker ~ "\n/alpha/\n/tools/beta/\n" ~ endMarker ~ "\n");
-    assert(g.check.length == 0);
+    auto gitIgnore = fromText(directory, beginMarker ~ "\n/alpha/\n/tools/beta/\n" ~ endMarker ~ "\n");
+    assert(gitIgnore.check.length == 0);
     assert(fromText(directory, "*.o\n").check.length == 0); // no block at all
 }
 
@@ -589,9 +589,9 @@ unittest
         directory.rmdirRecurse;
     }
 
-    auto g = fromText(directory,
+    auto gitIgnore = fromText(directory,
         beginMarker ~ "\n/beta/\n/alpha/\n/beta/\nalpha\n/gamma\n" ~ endMarker ~ "\n");
-    const findings = g.check;
+    const findings = gitIgnore.check;
     assert(findings.length == 4);
 
     assert(findings[0].directory == "" && findings[0].fixable
@@ -602,9 +602,9 @@ unittest
         && findings[2].message.canFind("not of the form /directory/"));
     assert(findings[3].directory == "/gamma" && !findings[3].fixable);
 
-    foreach (f; findings)
+    foreach (finding; findings)
     {
-        assert(f.message.canFind(g.path)); // every message names the file
+        assert(finding.message.canFind(gitIgnore.path)); // every message names the file
     }
 }
 
@@ -629,11 +629,11 @@ unittest
 unittest
 {
     string[] before = ["*.o"], nested = ["/beta/", "/alpha/"], after = ["tmp/"];
-    auto g = new GitIgnore("x/.gitignore", before, nested, after, false);
-    assert(g.path == "x/.gitignore" && !g.endsWithNewline);
-    assert(g.content == "*.o\n" ~ beginMarker ~ "\n/alpha/\n/beta/\n" ~ endMarker ~ "\ntmp/");
+    auto gitIgnore = new GitIgnore("x/.gitignore", before, nested, after, false);
+    assert(gitIgnore.path == "x/.gitignore" && !gitIgnore.endsWithNewline);
+    assert(gitIgnore.content == "*.o\n" ~ beginMarker ~ "\n/alpha/\n/beta/\n" ~ endMarker ~ "\ntmp/");
 
     before[0] = "changed";
     nested[0] = "/changed/";
-    assert(g.before == ["*.o"] && g.nested == ["/beta/", "/alpha/"]); // copies, not shared
+    assert(gitIgnore.before == ["*.o"] && gitIgnore.nested == ["/beta/", "/alpha/"]); // copies, not shared
 }

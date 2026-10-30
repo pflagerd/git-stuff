@@ -286,7 +286,7 @@ class GitRepos
         immutable scheme = parts[0];
         // RFC 3986: scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
         immutable hasScheme = parts[1].length && scheme.length && scheme[0].isAlpha
-            && scheme.all!(c => c.isAlphaNum || c == '+' || c == '-' || c == '.');
+            && scheme.all!(character => character.isAlphaNum || character == '+' || character == '-' || character == '.');
         if (!hasScheme)
         {
             return !url.canFind("//");
@@ -370,11 +370,11 @@ string unescapeField(string field) @safe pure
 /// Ordinary fields are untouched.
 unittest
 {
-    foreach (s; ["/alpha/", "git@github.com:pflagerd/alpha.git",
+    foreach (field; ["/alpha/", "git@github.com:pflagerd/alpha.git",
                  "https://github.com/pflagerd/alpha.git", "dev"])
     {
-        assert(escapeField(s) == s);
-        assert(unescapeField(s) == s);
+        assert(escapeField(field) == field);
+        assert(unescapeField(field) == field);
     }
 }
 
@@ -401,10 +401,10 @@ unittest
 /// unescapeField(escapeField(s)) == s, including strings that look escaped.
 unittest
 {
-    foreach (s; ["", "plain", "My Repo", "100%", "%20", "%2520", "a\tb\nc",
+    foreach (field; ["", "plain", "My Repo", "100%", "%20", "%2520", "a\tb\nc",
                  "foo%2Ebar", "% %25 %%", "trailing%"])
     {
-        assert(unescapeField(escapeField(s)) == s, s);
+        assert(unescapeField(escapeField(field)) == field, field);
     }
 }
 
@@ -413,9 +413,9 @@ unittest
 /// Every slash form becomes /alpha/; nested paths keep their inner slash.
 unittest
 {
-    foreach (s; ["alpha", "/alpha", "alpha/", "/alpha/"])
+    foreach (directory; ["alpha", "/alpha", "alpha/", "/alpha/"])
     {
-        assert(GitRepos.normalizeDirectory(s) == "/alpha/", s);
+        assert(GitRepos.normalizeDirectory(directory) == "/alpha/", directory);
     }
     assert(GitRepos.normalizeDirectory("tools/alpha") == "/tools/alpha/");
     assert(GitRepos.normalizeDirectory("/") == "");

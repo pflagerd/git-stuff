@@ -38,11 +38,11 @@ struct PushOptions
  */
 ExitStatus run(string[] args, File output, File errors)
 {
-    CommonOptions common;
-    PushOptions push;
+    CommonOptions commonOptions;
+    PushOptions pushOptions;
     bool pushParent;
-    const parsed = parseOptions(args, common, output, errors, usage,
-        "origin-only", "Push only to the remote named origin.", &push.originOnly,
+    const parsed = parseOptions(args, commonOptions, output, errors, usage,
+        "origin-only", "Push only to the remote named origin.", &pushOptions.originOnly,
         "parent", "Also push the parent directory itself, after the nested repos.", &pushParent);
     if (!parsed.proceed)
     {
@@ -54,37 +54,37 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.usage;
     }
 
-    ParentDirectory parent;
-    if (!loadParent("push-nested", common.directory, parent, errors))
+    ParentDirectory parentDirectory;
+    if (!loadParent("push-nested", commonOptions.directory, parentDirectory, errors))
     {
         return ExitStatus.usage;
     }
-    if (common.fix)
+    if (commonOptions.fix)
     {
-        parent.fix();
+        parentDirectory.fix();
         try
         {
-            parent.write();
+            parentDirectory.write();
         }
-        catch (Exception e)
+        catch (Exception exception)
         {
-            errors.writeln("push-nested: could not write the fixed files: ", e.msg);
+            errors.writeln("push-nested: could not write the fixed files: ", exception.msg);
             return ExitStatus.findings;
         }
     }
-    bool failed = printFindings(parent.check, errors) > 0;
+    bool failed = printFindings(parentDirectory.check, errors) > 0;
 
     bool[string] seen;
-    foreach (entry; parent.gitRepos.gitReposEntries)
+    foreach (gitReposEntry; parentDirectory.gitRepos.gitReposEntries)
     {
-        if (entry.directory in seen)
+        if (gitReposEntry.directory in seen)
         {
             continue; // a duplicate; check() has already reported it
         }
-        seen[entry.directory] = true;
+        seen[gitReposEntry.directory] = true;
 
-        output.writeln("== ", entry.directory);
-        if (!pushNestedRepo(common.directory, entry, push, output, errors))
+        output.writeln("== ", gitReposEntry.directory);
+        if (!pushNestedRepo(commonOptions.directory, gitReposEntry, pushOptions, output, errors))
         {
             failed = true;
         }
@@ -92,8 +92,8 @@ ExitStatus run(string[] args, File output, File errors)
 
     if (pushParent)
     {
-        output.writeln("== parent ", common.directory);
-        if (!pushParentDirectory(common.directory, push, output, errors))
+        output.writeln("== parent ", commonOptions.directory);
+        if (!pushParentDirectory(commonOptions.directory, pushOptions, output, errors))
         {
             failed = true;
         }
@@ -106,22 +106,23 @@ ExitStatus run(string[] args, File output, File errors)
  * Pushes one nested repo, after checking it is a repo, has a current branch,
  * and is on the branch .gitrepos means (decision 3: otherwise skipped, and
  * the warning says what to do; nothing is switched).
+ * `parentDirectory` is a path, not a ParentDirectory, on purpose.
  *
  * Returns: false if it was skipped or anything failed.
  */
-bool pushNestedRepo(string parentDirectory, const GitReposEntry entry,
-    const PushOptions push, File output, File errors)
+bool pushNestedRepo(string parentDirectory, const GitReposEntry gitReposEntry,
+    const PushOptions pushOptions, File output, File errors)
 {
     import std.path : buildPath;
 
-    immutable onDisk = buildPath(parentDirectory, entry.directory[1 .. $ - 1]);
+    immutable onDisk = buildPath(parentDirectory, gitReposEntry.directory[1 .. $ - 1]);
     void problem(string message)
     {
         output.flush();
-        errors.writeln("push-nested: ", entry.directory, ": ", message);
+        errors.writeln("push-nested: ", gitReposEntry.directory, ": ", message);
     }
 
-    immutable notRepository = ParentDirectory.repositoryProblem(entry.directory, onDisk);
+    immutable notRepository = ParentDirectory.repositoryProblem(gitReposEntry.directory, onDisk);
     if (notRepository.length)
     {
         problem(notRepository ~ "; skipped");
@@ -135,8 +136,8 @@ bool pushNestedRepo(string parentDirectory, const GitReposEntry entry,
         return false;
     }
 
-    string expected = branchAfterClone(entry.directory, entry.url, entry.branch,
-        (string b) => remoteHasBranch(onDisk, b));
+    string expected = branchAfterClone(gitReposEntry.directory, gitReposEntry.url, gitReposEntry.branch,
+        (string candidate) => remoteHasBranch(onDisk, candidate));
     if (expected.length == 0)
     {
         expected = remoteDefaultBranch(onDisk); // "" if unknown: nothing to compare
@@ -149,7 +150,7 @@ bool pushNestedRepo(string parentDirectory, const GitReposEntry entry,
         return false;
     }
 
-    return pushRepository(entry.directory, onDisk, current, push, output, errors);
+    return pushRepository(gitReposEntry.directory, onDisk, current, pushOptions, output, errors);
 }
 
 /**
@@ -158,7 +159,7 @@ bool pushNestedRepo(string parentDirectory, const GitReposEntry entry,
  *
  * Returns: false if it was skipped or anything failed.
  */
-bool pushParentDirectory(string parentDirectory, const PushOptions push, File output,
+bool pushParentDirectory(string parentDirectory, const PushOptions pushOptions, File output,
     File errors)
 {
     immutable name = "the parent directory";
@@ -176,7 +177,7 @@ bool pushParentDirectory(string parentDirectory, const PushOptions push, File ou
         errors.writeln("push-nested: ", name, " has no current branch (detached HEAD); skipped");
         return false;
     }
-    return pushRepository(name, parentDirectory, current, push, output, errors);
+    return pushRepository(name, parentDirectory, current, pushOptions, output, errors);
 }
 
 /**
@@ -188,7 +189,7 @@ bool pushParentDirectory(string parentDirectory, const PushOptions push, File ou
  *
  * Returns: false if a push failed or there was nothing to push to.
  */
-bool pushRepository(string name, string onDisk, string branch, const PushOptions push,
+bool pushRepository(string name, string onDisk, string branch, const PushOptions pushOptions,
     File output, File errors)
 {
     import std.algorithm.searching : canFind;
@@ -199,12 +200,12 @@ bool pushRepository(string name, string onDisk, string branch, const PushOptions
     }
 
     const all = remotes(onDisk);
-    const targets = push.originOnly ? (all.canFind("origin") ? ["origin"] : []) : all;
+    const targets = pushOptions.originOnly ? (all.canFind("origin") ? ["origin"] : []) : all;
     if (targets.length == 0)
     {
         output.flush();
         errors.writeln("push-nested: ", name, ": ",
-            push.originOnly ? "no remote named origin" : "no remotes", "; skipped");
+            pushOptions.originOnly ? "no remote named origin" : "no remotes", "; skipped");
         return false;
     }
 
@@ -235,8 +236,8 @@ string[] remotes(string repository)
     import std.process : execute;
     import std.string : lineSplitter, strip;
 
-    const r = execute(["git", "-C", repository, "remote"]);
-    return r.status == 0 ? r.output.strip.lineSplitter.array : [];
+    const result = execute(["git", "-C", repository, "remote"]);
+    return result.status == 0 ? result.output.strip.lineSplitter.array : [];
 }
 
 /// Whether the current branch has an upstream configured.
@@ -244,9 +245,9 @@ bool hasUpstream(string repository)
 {
     import std.process : execute;
 
-    const r = execute(["git", "-C", repository, "rev-parse", "--abbrev-ref",
+    const result = execute(["git", "-C", repository, "rev-parse", "--abbrev-ref",
         "--symbolic-full-name", "@{upstream}"]);
-    return r.status == 0;
+    return result.status == 0;
 }
 
 /// Whether the working tree or index has uncommitted changes (untracked
@@ -256,8 +257,8 @@ bool isDirty(string repository)
     import std.process : execute;
     import std.string : strip;
 
-    const r = execute(["git", "-C", repository, "status", "--porcelain"]);
-    return r.status == 0 && r.output.strip.length > 0;
+    const result = execute(["git", "-C", repository, "status", "--porcelain"]);
+    return result.status == 0 && result.output.strip.length > 0;
 }
 
 version (unittest)
@@ -312,17 +313,17 @@ version (unittest)
     /// The commit `branch` is at in `repository` ("" if it has no such branch).
     private string tip(string repository, string branch)
     {
-        const r = execute(["git", "-C", repository, "rev-parse", "--verify", "--quiet",
+        const result = execute(["git", "-C", repository, "rev-parse", "--verify", "--quiet",
             "refs/heads/" ~ branch]);
-        return r.status == 0 ? r.output.strip : "";
+        return result.status == 0 ? result.output.strip : "";
     }
 
     /// The upstream of the current branch of `repository` ("" if none).
     private string upstream(string repository)
     {
-        const r = execute(["git", "-C", repository, "rev-parse", "--abbrev-ref",
+        const result = execute(["git", "-C", repository, "rev-parse", "--abbrev-ref",
             "--symbolic-full-name", "@{upstream}"]);
-        return r.status == 0 ? r.output.strip : "";
+        return result.status == 0 ? result.output.strip : "";
     }
 
     /// A bare repository `<name>.git` in `scratch` with one commit on `main`.
@@ -353,9 +354,9 @@ version (unittest)
         sh("-C", alpha, "remote", "add", "mirror", mirror);
         parent.mkdirRecurse;
         buildPath(parent, ".gitrepos").write("/alpha/ " ~ origin ~ "\n");
-        auto p = new ParentDirectory(parent);
-        p.fix();
-        p.write();
+        auto parentDirectory = new ParentDirectory(parent);
+        parentDirectory.fix();
+        parentDirectory.write();
         return [parent, alpha, origin, mirror];
     }
 }
@@ -369,12 +370,12 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    const s = setUp(scratch);
-    commit(s[1]);
+    const paths = setUp(scratch);
+    commit(paths[1]);
     string[2] text;
-    assert(pushNested(scratch, s[0], [], text) == 0, text[1]);
-    assert(tip(s[2], "main") == tip(s[1], "main"));
-    assert(tip(s[3], "main") == tip(s[1], "main"));
+    assert(pushNested(scratch, paths[0], [], text) == 0, text[1]);
+    assert(tip(paths[2], "main") == tip(paths[1], "main"));
+    assert(tip(paths[3], "main") == tip(paths[1], "main"));
 }
 
 /// --origin-only leaves the other remotes alone.
@@ -386,13 +387,13 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    const s = setUp(scratch);
-    immutable mirrorBefore = tip(s[3], "main");
-    commit(s[1]);
+    const paths = setUp(scratch);
+    immutable mirrorBefore = tip(paths[3], "main");
+    commit(paths[1]);
     string[2] text;
-    assert(pushNested(scratch, s[0], ["--origin-only"], text) == 0, text[1]);
-    assert(tip(s[2], "main") == tip(s[1], "main"));
-    assert(tip(s[3], "main") == mirrorBefore);
+    assert(pushNested(scratch, paths[0], ["--origin-only"], text) == 0, text[1]);
+    assert(tip(paths[2], "main") == tip(paths[1], "main"));
+    assert(tip(paths[3], "main") == mirrorBefore);
 }
 
 /// A branch with no upstream gets origin/<branch>; an existing upstream, even
@@ -405,27 +406,27 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    const s = setUp(scratch);
+    const paths = setUp(scratch);
     // A remote that sorts after origin: if -u went to every remote, the last
     // push (zeta) would win and the upstream would be zeta/feature.
-    sh("-C", s[1], "remote", "add", "zeta", s[3]);
+    sh("-C", paths[1], "remote", "add", "zeta", paths[3]);
     // A new branch has no upstream. (.gitrepos says main, so record this one.)
-    sh("-C", s[1], "checkout", "-q", "-b", "feature");
-    commit(s[1]);
-    buildPath(s[0], ".gitrepos").write("/alpha/ " ~ s[2] ~ " feature\n");
-    assert(upstream(s[1]) == "");
+    sh("-C", paths[1], "checkout", "-q", "-b", "feature");
+    commit(paths[1]);
+    buildPath(paths[0], ".gitrepos").write("/alpha/ " ~ paths[2] ~ " feature\n");
+    assert(upstream(paths[1]) == "");
 
     string[2] text;
-    assert(pushNested(scratch, s[0], [], text) == 0, text[1]);
-    assert(upstream(s[1]) == "origin/feature");
-    assert(tip(s[2], "feature") == tip(s[1], "feature"));
-    assert(tip(s[3], "feature") == tip(s[1], "feature"));
+    assert(pushNested(scratch, paths[0], [], text) == 0, text[1]);
+    assert(upstream(paths[1]) == "origin/feature");
+    assert(tip(paths[2], "feature") == tip(paths[1], "feature"));
+    assert(tip(paths[3], "feature") == tip(paths[1], "feature"));
 
     // Point the upstream at the mirror instead: a push keeps it there.
-    sh("-C", s[1], "branch", "-q", "--set-upstream-to=mirror/feature");
-    commit(s[1]);
-    assert(pushNested(scratch, s[0], [], text) == 0, text[1]);
-    assert(upstream(s[1]) == "mirror/feature");
+    sh("-C", paths[1], "branch", "-q", "--set-upstream-to=mirror/feature");
+    commit(paths[1]);
+    assert(pushNested(scratch, paths[0], [], text) == 0, text[1]);
+    assert(upstream(paths[1]) == "mirror/feature");
 }
 
 /// The usual no-upstream case: master in a repo made with git init and git
@@ -449,9 +450,9 @@ unittest
     sh("-C", beta, "remote", "add", "origin", remote);
     commit(beta);
     buildPath(parent, ".gitrepos").write("/beta/ " ~ remote ~ "\n");
-    auto p = new ParentDirectory(parent);
-    p.fix();
-    p.write();
+    auto parentDirectory = new ParentDirectory(parent);
+    parentDirectory.fix();
+    parentDirectory.write();
     assert(upstream(beta) == "");
 
     string[2] text;
@@ -472,14 +473,14 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    const s = setUp(scratch);
-    sh("-C", s[1], "checkout", "-q", "-b", "feature");
-    commit(s[1]);
+    const paths = setUp(scratch);
+    sh("-C", paths[1], "checkout", "-q", "-b", "feature");
+    commit(paths[1]);
     string[2] text;
-    assert(pushNested(scratch, s[0], [], text) == 1);
+    assert(pushNested(scratch, paths[0], [], text) == 1);
     assert(text[1].canFind("on branch 'feature', but .gitrepos means 'main'; skipped"));
     assert(text[1].canFind("add-nested --branch"));
-    assert(tip(s[2], "feature") == "" && tip(s[3], "feature") == "");
+    assert(tip(paths[2], "feature") == "" && tip(paths[3], "feature") == "");
 }
 
 /// Uncommitted changes: a note, the committed work is pushed, exit 0.
@@ -493,13 +494,13 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    const s = setUp(scratch);
-    commit(s[1]);
-    buildPath(s[1], "unsaved.txt").write("not committed\n");
+    const paths = setUp(scratch);
+    commit(paths[1]);
+    buildPath(paths[1], "unsaved.txt").write("not committed\n");
     string[2] text;
-    assert(pushNested(scratch, s[0], [], text) == 0, text[1]);
+    assert(pushNested(scratch, paths[0], [], text) == 0, text[1]);
     assert(text[0].canFind("note: /alpha/ has uncommitted changes"));
-    assert(tip(s[2], "main") == tip(s[1], "main"));
+    assert(tip(paths[2], "main") == tip(paths[1], "main"));
 }
 
 /// A rejected push (the remote has moved on) fails, never forces, and the
@@ -514,20 +515,20 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    const s = setUp(scratch);
+    const paths = setUp(scratch);
     // Someone else pushes to origin.
     immutable other = buildPath(scratch, "other");
-    sh("clone", "-q", s[2], other);
+    sh("clone", "-q", paths[2], other);
     commit(other, "theirs");
     sh("-C", other, "push", "-q", "origin", "main");
-    immutable theirs = tip(s[2], "main");
+    immutable theirs = tip(paths[2], "main");
 
-    commit(s[1], "mine");
+    commit(paths[1], "mine");
     string[2] text;
-    assert(pushNested(scratch, s[0], [], text) == 1);
+    assert(pushNested(scratch, paths[0], [], text) == 1);
     assert(text[1].canFind("/alpha/: push to origin failed"));
-    assert(tip(s[2], "main") == theirs);               // not overwritten
-    assert(tip(s[3], "main") == tip(s[1], "main"));    // the mirror still got it
+    assert(tip(paths[2], "main") == theirs);               // not overwritten
+    assert(tip(paths[3], "main") == tip(paths[1], "main"));    // the mirror still got it
 }
 
 /// Not a repository, detached HEAD, and --origin-only without origin: skipped.
@@ -541,25 +542,25 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    const s = setUp(scratch);
+    const paths = setUp(scratch);
     string[2] text;
 
-    sh("-C", s[1], "checkout", "-q", "--detach");
-    assert(pushNested(scratch, s[0], [], text) == 1);
+    sh("-C", paths[1], "checkout", "-q", "--detach");
+    assert(pushNested(scratch, paths[0], [], text) == 1);
     assert(text[1].canFind("no current branch (detached HEAD); skipped"));
-    sh("-C", s[1], "checkout", "-q", "main");
+    sh("-C", paths[1], "checkout", "-q", "main");
 
-    sh("-C", s[1], "remote", "rename", "origin", "upstream-copy");
-    assert(pushNested(scratch, s[0], ["--origin-only"], text) == 1);
+    sh("-C", paths[1], "remote", "rename", "origin", "upstream-copy");
+    assert(pushNested(scratch, paths[0], ["--origin-only"], text) == 1);
     assert(text[1].canFind("no remote named origin; skipped"));
-    commit(s[1]);
-    assert(pushNested(scratch, s[0], [], text) == 0, text[1]);   // its other remotes
+    commit(paths[1]);
+    assert(pushNested(scratch, paths[0], [], text) == 0, text[1]);   // its other remotes
     // git remote rename carried the upstream along; with no origin nothing resets it.
-    assert(upstream(s[1]) == "upstream-copy/main");
+    assert(upstream(paths[1]) == "upstream-copy/main");
 
-    rmdirRecurse(s[1]);
-    buildPath(s[1]).mkdirRecurse;
-    assert(pushNested(scratch, s[0], [], text) == 1);
+    rmdirRecurse(paths[1]);
+    buildPath(paths[1]).mkdirRecurse;
+    assert(pushNested(scratch, paths[0], [], text) == 1);
     assert(text[1].canFind("is not a git repository") && text[1].canFind("skipped"));
 }
 
@@ -576,22 +577,22 @@ unittest
         scratch.rmdirRecurse;
     }
 
-    const s = setUp(scratch);
+    const paths = setUp(scratch);
     string[2] text;
-    assert(pushNested(scratch, s[0], ["--parent"], text) == 1);
+    assert(pushNested(scratch, paths[0], ["--parent"], text) == 1);
     assert(text[1].canFind("the parent directory is not a git repository"));
 
     immutable parentRemote = bare(scratch, "parent-remote");
-    sh("-C", s[0], "init", "-q", "-b", "main");
-    sh("-C", s[0], "remote", "add", "origin", parentRemote);
-    sh("-C", s[0], "add", ".gitrepos", ".gitignore");
-    sh("-C", s[0], "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "parent");
-    sh("-C", s[0], "fetch", "-q", "origin");
-    sh("-C", s[0], "reset", "-q", "--soft", "origin/main");
-    commit(s[0], "parent work");
+    sh("-C", paths[0], "init", "-q", "-b", "main");
+    sh("-C", paths[0], "remote", "add", "origin", parentRemote);
+    sh("-C", paths[0], "add", ".gitrepos", ".gitignore");
+    sh("-C", paths[0], "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "parent");
+    sh("-C", paths[0], "fetch", "-q", "origin");
+    sh("-C", paths[0], "reset", "-q", "--soft", "origin/main");
+    commit(paths[0], "parent work");
 
-    assert(pushNested(scratch, s[0], ["--parent"], text) == 0, text[1]);
-    assert(tip(parentRemote, "main") == tip(s[0], "main"));
+    assert(pushNested(scratch, paths[0], ["--parent"], text) == 0, text[1]);
+    assert(tip(parentRemote, "main") == tip(paths[0], "main"));
     assert(text[0].indexOf("== /alpha/") < text[0].indexOf("== parent "));
 }
 

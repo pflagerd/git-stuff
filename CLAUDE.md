@@ -57,6 +57,9 @@ Teaching them what you're doing comes first. Speed comes second.
     method share a name.
   - A name that would be a D keyword gets a trailing underscore: `real_`
     for the real directory, since `real` is a floating-point type.
+  - Don't reuse a name declared in D's runtime module `object` (`string`,
+    `size_t`, `Object`, ...). They aren't keywords, so the compiler lets
+    a variable hide them; pick another name rather than adding `_`.
 
 ### Project facts: `README.md` and `TODO`
 - `README.md` states the project's goal: nested git repositories that are
