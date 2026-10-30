@@ -1,6 +1,6 @@
 # push-nested (proposal)
 
-Status: **proposal, awaiting decisions.** Issue:
+Status: **decisions mostly made; two points open (see Answers).** Issue:
 [#19](https://github.com/pflagerd/git-stuff/issues/19). Builds on
 `docs/nested-commands-proposal.md`: same conventions as the other commands
 (`run()` tested in-process against local repositories, exit statuses 0/1/2,
@@ -61,3 +61,19 @@ with `pull-nested`.
    she pushes it as usual). Alternatively `--parent` to push it too.
 6. **Upstream:** don't set one (`git push` without `-u`; recommended: it would
    change her repos' configuration as a side effect).
+
+## Answers
+
+1. (b): push to every remote with a push url by default, as `bin/push`
+   does; `--origin-only` pushes only to `origin`.
+2. The current branch only.
+3. On a different branch from the one `.gitrepos` means: skip the repo with
+   a warning. *Open:* what `--fix` should do about it (see the question in
+   the conversation: tell her only, update `.gitrepos` to her branch, or
+   switch the repo, which would contradict `pull-nested`'s decision 6).
+4. As recommended: warn that uncommitted changes won't be pushed, and push
+   what is committed.
+5. A `--parent` option also pushes the parent directory itself.
+6. If the current branch has no upstream, set it to `origin` while pushing
+   (`git push -u origin HEAD`), only on the push to `origin`. *Open:* a repo
+   with no `origin` remote.
