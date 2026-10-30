@@ -25,3 +25,5 @@ Next: the commands in docs/nested-commands-proposal.md (all its decisions are ma
 
 Replacing the Python scripts with D, or deleting them, is tracked as GitHub issues
 #14 #15 #16 #17 #11, then #18 (remove python3 from setup.sh); see README.md, "Planned work".
+gdb/d_arrays.py (GDB pretty-printers for D arrays) is not one of them: it stays Python on
+purpose, since GDB can only be extended in Python.

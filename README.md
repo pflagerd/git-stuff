@@ -240,6 +240,28 @@ deletes a directory**; if one is still on disk, the message says so. A
 directory in neither file gets a warning, and the others are still removed.
 The files are only rewritten if something changed.
 
+## Debugging
+
+The programs are built with debug information (`-gf -debug`), so they can be
+stepped through in GDB, or in Kate's debugger, which runs GDB.
+
+GDB shows a D array as its raw parts, `length` and `ptr`, and runs D strings
+into each other because they have no terminating NUL. `gdb/d_arrays.py` fixes
+that: with it loaded, `string[] args` shows as its elements, `"alpha"`,
+`"beta"`, and any other D array (`int[]`, `string[][]`, ...) as its elements
+too. To load it whenever GDB starts, add this line to your `~/.gdbinit`,
+using the path of your clone:
+
+```
+source ~/git-stuff/gdb/d_arrays.py
+```
+
+A plain `print args` uses it straight away. A front end's variables view, such
+as Kate's "Locals and Stack", uses it only if the front end turns on
+pretty-printing (`-enable-pretty-printing` in GDB's machine interface).
+
+This is the one Python file meant to stay: GDB can only be extended in Python.
+
 ## Bash helpers in `bin/`
 
 These are short wrappers around git. Some call each other (for example,
@@ -315,6 +337,7 @@ and `docs/nested-commands-proposal.md` (the commands):
 | `textFile.d` | Reading files and writing them atomically (temporary file, then rename). |
 | `gitCloneDirectoryName.d` | The directory name `git clone` would choose for a url, a port of `git_url_basename()` in git's [`dir.c`](https://github.com/git/git/blob/master/dir.c). |
 | `debugio.d` | Linked into every program; see [Building](#building). |
+| `gdb/d_arrays.py` | GDB pretty-printers for D arrays; see [Debugging](#debugging). |
 
 ## Tests
 

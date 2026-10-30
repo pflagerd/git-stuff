@@ -56,7 +56,9 @@ Teaching them what you're doing comes first. Speed comes second.
     (e.g. `bin/pull-desktop-repos`, `bin/template`).
   - Python scripts at the top level. These are being replaced by D or
     deleted (plan in `TODO`): write new code, tests included, in D, and
-    don't add Python.
+    don't add Python. One exception: `gdb/d_arrays.py`, GDB pretty-printers
+    for D arrays, stays Python on purpose, because GDB can only be extended
+    in Python (Ubuntu's GDB has no Guile).
 - Keep `README.md` true: update it in the same commit as any change that
   makes it out of date.
 
