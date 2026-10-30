@@ -43,9 +43,11 @@ struct Parsed
      *   missing value), and a message has been printed to the errors.
      *
      * It is never ExitStatus.findings (1). When `proceed` is true it is
-     * left at ExitStatus.ok and callers ignore it.
+     * left at ExitStatus.ok and callers ignore it. Being an ExitStatus, not
+     * an int, it can only hold those values; it still converts to int, so
+     * a run() can return it directly.
      */
-    int exitStatus;
+    ExitStatus exitStatus;
 }
 
 /**
@@ -443,6 +445,15 @@ unittest
         });
         assert(text[0] == "" && text[1].canFind("check-nested: "), bad[1]);
     }
+}
+
+/// Parsed.exitStatus is an ExitStatus: a bare number can't be stored in it,
+/// and it converts to int for run() to return.
+unittest
+{
+    static assert(is(typeof(Parsed.init.exitStatus) == ExitStatus));
+    static assert(!__traits(compiles, { Parsed p; p.exitStatus = 5; }));
+    static assert(__traits(compiles, { Parsed p; int status = p.exitStatus; }));
 }
 
 // --- tests: output -------------------------------------------------------------
