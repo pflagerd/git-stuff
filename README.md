@@ -389,5 +389,3 @@ Bugs are listed under [Known issues](#known-issues).
   `git check-ignore` test in `git_ignored()`, and what that test decides
   depends on the directory you run it from.
   ([#11](https://github.com/pflagerd/git-stuff/issues/11))
-- **`bin/commit-and-push` has no `#!` line**, so it runs under whatever shell
-  calls it. ([#12](https://github.com/pflagerd/git-stuff/issues/12))
