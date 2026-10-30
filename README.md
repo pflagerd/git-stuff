@@ -256,9 +256,10 @@ using the path of your clone:
 source ~/git-stuff/gdb/d_arrays.py
 ```
 
-A plain `print args` uses it straight away. A front end's variables view, such
-as Kate's "Locals and Stack", uses it only if the front end turns on
-pretty-printing (`-enable-pretty-printing` in GDB's machine interface).
+A plain `print args` uses it straight away, and so does Kate's debugger: its
+"Locals and Stack" view shows `args` as its elements. (A front end's
+variables view uses it only if the front end turns on pretty-printing,
+`-enable-pretty-printing` in GDB's machine interface; Kate does.)
 
 This is the one Python file meant to stay: GDB can only be extended in Python.
 
