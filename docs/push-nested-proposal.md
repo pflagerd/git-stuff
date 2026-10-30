@@ -1,6 +1,6 @@
 # push-nested (proposal)
 
-Status: **decisions mostly made; two points open (see Answers).** Issue:
+Status: **all decisions made (see Answers); being implemented.** Issue:
 [#19](https://github.com/pflagerd/git-stuff/issues/19). Builds on
 `docs/nested-commands-proposal.md`: same conventions as the other commands
 (`run()` tested in-process against local repositories, exit statuses 0/1/2,
@@ -68,12 +68,18 @@ with `pull-nested`.
    does; `--origin-only` pushes only to `origin`.
 2. The current branch only.
 3. On a different branch from the one `.gitrepos` means: skip the repo with
-   a warning. *Open:* what `--fix` should do about it (see the question in
-   the conversation: tell her only, update `.gitrepos` to her branch, or
-   switch the repo, which would contradict `pull-nested`'s decision 6).
-4. As recommended: warn that uncommitted changes won't be pushed, and push
-   what is committed.
-5. A `--parent` option also pushes the parent directory itself.
-6. If the current branch has no upstream, set it to `origin` while pushing
-   (`git push -u origin HEAD`), only on the push to `origin`. *Open:* a repo
-   with no `origin` remote.
+   a warning saying what to do (switch branch, or update `.gitrepos`, then
+   run again). `--fix` keeps its usual meaning, repairing `.gitignore` and
+   `.gitrepos` only; it doesn't touch the repo or its branch.
+4. As recommended: note that uncommitted changes won't be pushed, and push
+   what is committed. It's a note on the output, not a warning, and doesn't
+   affect the exit status.
+5. A `--parent` option also pushes the parent directory itself, after the
+   nested repos, with the same rules; a warning if it isn't a repository.
+6. If the remote named `origin` exists and the current branch has no
+   upstream yet, the push to `origin` is `git push -u origin <branch>`,
+   which records `origin/<branch>` as its upstream. A branch whose upstream
+   is already set (to any remote) is left as it is.
+7. `origin` means the remote named `origin`. With `--origin-only`, a repo
+   with no `origin` is skipped with a warning; by default it is pushed to
+   its other remotes and no upstream is set.
