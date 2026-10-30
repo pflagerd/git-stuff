@@ -39,6 +39,22 @@ Teaching them what you're doing comes first. Speed comes second.
   she/her.
 - In D code, always put braces around the body of `if`, `else` and loops,
   even for one statement. A braceless body is how issue #9 happened.
+- Names in D code:
+  - A variable holding a class or struct is named after its type in
+    lowerCamelCase: `GitReposEntry gitReposEntry`, `ParentDirectory
+    parentDirectory`. Arrays take the plural (`gitReposEntries`).
+  - Use full words, not abbreviations: `result`, not `r`; `exception`,
+    not `e` or `x`; `finding`, not `f`. Loop indices like `i` may stay.
+  - Where two values of one type are in scope, or a role says more than
+    the type (`output` and `errors` for two `File`s), use the descriptive
+    name instead.
+  - A string may have a name that sounds like a type (a path called
+    `parentDirectory`) when that name is the most meaningful one; add a
+    short comment saying it's on purpose.
+  - A private field behind an accessor of the same name gets a leading
+    underscore: `private GitIgnore _gitIgnore;` behind
+    `const(GitIgnore) gitIgnore() const`. D won't let a field and a
+    method share a name.
 
 ### Project facts: `README.md` and `TODO`
 - `README.md` states the project's goal: nested git repositories that are

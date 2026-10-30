@@ -19,10 +19,10 @@ class ParentDirectory
     // holds only ParentDirectory, so only its methods can replace these.
     // Commands go through add(), remove() and fix(), which keep both files
     // in step. https://dlang.org/spec/attribute.html#visibility_attributes
-    // The trailing _ marks the field behind the read-only property of the
+    // The leading _ marks the field behind the read-only property of the
     // same name below; D won't let a field and a method share a name.
-    private GitIgnore gitIgnore_;
-    private GitRepos gitRepos_;
+    private GitIgnore _gitIgnore;
+    private GitRepos _gitRepos;
 
     /**
      * Reads `directory`/.gitignore and `directory`/.gitrepos. Either may be
@@ -36,20 +36,20 @@ class ParentDirectory
         import std.path : buildPath;
 
         this.directory = directory;
-        gitIgnore_ = new GitIgnore(buildPath(directory, ".gitignore"));
-        gitRepos_ = new GitRepos(buildPath(directory, ".gitrepos"));
+        _gitIgnore = new GitIgnore(buildPath(directory, ".gitignore"));
+        _gitRepos = new GitRepos(buildPath(directory, ".gitrepos"));
     }
 
     /// Read-only views of the two files.
     const(GitIgnore) gitIgnore() const @safe pure nothrow @nogc
     {
-        return gitIgnore_;
+        return _gitIgnore;
     }
 
     /// ditto
     const(GitRepos) gitRepos() const @safe pure nothrow @nogc
     {
-        return gitRepos_;
+        return _gitRepos;
     }
 
     /**
@@ -67,11 +67,11 @@ class ParentDirectory
     {
         import std.algorithm.searching : canFind;
 
-        gitRepos_.add(gitReposEntry); // may throw; nothing changed yet if it does
+        _gitRepos.add(gitReposEntry); // may throw; nothing changed yet if it does
         immutable pattern = GitRepos.normalizeDirectory(gitReposEntry.directory);
-        if (!gitIgnore_.nested.canFind(pattern))
+        if (!_gitIgnore.nested.canFind(pattern))
         {
-            gitIgnore_.nested ~= pattern;
+            _gitIgnore.nested ~= pattern;
         }
     }
 
@@ -88,11 +88,11 @@ class ParentDirectory
         import std.array : array;
 
         immutable pattern = GitRepos.normalizeDirectory(directory);
-        immutable fromRepos = gitRepos_.remove(directory);
+        immutable fromRepos = _gitRepos.remove(directory);
 
-        immutable before = gitIgnore_.nested.length;
-        gitIgnore_.nested = gitIgnore_.nested.filter!(existingPattern => existingPattern != pattern).array;
-        immutable fromIgnore = gitIgnore_.nested.length != before;
+        immutable before = _gitIgnore.nested.length;
+        _gitIgnore.nested = _gitIgnore.nested.filter!(existingPattern => existingPattern != pattern).array;
+        immutable fromIgnore = _gitIgnore.nested.length != before;
 
         return fromRepos || fromIgnore;
     }
@@ -114,11 +114,11 @@ class ParentDirectory
     {
         import std.algorithm.searching : canFind;
 
-        Finding[] findings = gitIgnore_.check() ~ gitRepos_.check();
+        Finding[] findings = _gitIgnore.check() ~ _gitRepos.check();
 
         bool[string] inRepos;
         string[] reposOrder; // distinct .gitrepos directories, in file order
-        foreach (gitReposEntry; gitRepos_.gitReposEntries)
+        foreach (gitReposEntry; _gitRepos.gitReposEntries)
         {
             if (gitReposEntry.directory !in inRepos)
             {
@@ -128,13 +128,13 @@ class ParentDirectory
         }
 
         bool[string] loose;
-        foreach (line; gitIgnore_.before ~ gitIgnore_.after)
+        foreach (line; _gitIgnore.before ~ _gitIgnore.after)
         {
             immutable directory = looseDirectory(line);
             if (directory.length && directory in inRepos && directory !in loose)
             {
                 loose[directory] = true;
-                findings ~= Finding(directory, gitIgnore_.path ~ ": '" ~ line
+                findings ~= Finding(directory, _gitIgnore.path ~ ": '" ~ line
                     ~ "' names nested repo " ~ directory
                     ~ " outside the managed block", true);
             }
@@ -142,22 +142,22 @@ class ParentDirectory
 
         foreach (directory; reposOrder)
         {
-            if (!gitIgnore_.nested.canFind(directory) && directory !in loose)
+            if (!_gitIgnore.nested.canFind(directory) && directory !in loose)
             {
-                findings ~= Finding(directory, gitRepos_.path ~ ": " ~ directory
-                    ~ " is not in the managed block of " ~ gitIgnore_.path, true);
+                findings ~= Finding(directory, _gitRepos.path ~ ": " ~ directory
+                    ~ " is not in the managed block of " ~ _gitIgnore.path, true);
             }
         }
 
         bool[string] reported;
-        foreach (pattern; gitIgnore_.nested)
+        foreach (pattern; _gitIgnore.nested)
         {
             if (GitIgnore.isDirectoryPattern(pattern) && pattern !in inRepos
                 && pattern !in reported)
             {
                 reported[pattern] = true;
-                findings ~= Finding(pattern, gitIgnore_.path ~ ": " ~ pattern
-                    ~ " is in the managed block but not in " ~ gitRepos_.path, false);
+                findings ~= Finding(pattern, _gitIgnore.path ~ ": " ~ pattern
+                    ~ " is in the managed block but not in " ~ _gitRepos.path, false);
             }
         }
 
@@ -192,7 +192,7 @@ class ParentDirectory
         Finding[] findings;
         bool[string] seen;
 
-        foreach (gitReposEntry; gitRepos_.gitReposEntries)
+        foreach (gitReposEntry; _gitRepos.gitReposEntries)
         {
             if (gitReposEntry.directory in seen)
             {
@@ -311,7 +311,7 @@ class ParentDirectory
         import std.array : array;
 
         bool[string] inRepos;
-        foreach (gitReposEntry; gitRepos_.gitReposEntries)
+        foreach (gitReposEntry; _gitRepos.gitReposEntries)
         {
             inRepos[gitReposEntry.directory] = true;
         }
@@ -328,16 +328,16 @@ class ParentDirectory
             return true;
         }
 
-        immutable before = gitIgnore_.before.filter!(line => keep(line)).array;
-        immutable after = gitIgnore_.after.filter!(line => keep(line)).array;
-        string[] nested = gitIgnore_.nested ~ moved ~ gitRepos_.gitReposEntries
-            .filter!(gitReposEntry => !gitIgnore_.nested.canFind(gitReposEntry.directory))
+        immutable before = _gitIgnore.before.filter!(line => keep(line)).array;
+        immutable after = _gitIgnore.after.filter!(line => keep(line)).array;
+        string[] nested = _gitIgnore.nested ~ moved ~ _gitRepos.gitReposEntries
+            .filter!(gitReposEntry => !_gitIgnore.nested.canFind(gitReposEntry.directory))
             .map!(gitReposEntry => gitReposEntry.directory).array;
 
-        gitIgnore_ = new GitIgnore(gitIgnore_.path, before,
-            GitIgnore.sortedUnique(nested), after, gitIgnore_.endsWithNewline);
+        _gitIgnore = new GitIgnore(_gitIgnore.path, before,
+            GitIgnore.sortedUnique(nested), after, _gitIgnore.endsWithNewline);
 
-        gitRepos_.gitReposEntries.sort!((left, right) => left.directory < right.directory, SwapStrategy.stable);
+        _gitRepos.gitReposEntries.sort!((left, right) => left.directory < right.directory, SwapStrategy.stable);
 
         return check();
     }
@@ -369,8 +369,8 @@ class ParentDirectory
      */
     void write() const
     {
-        gitRepos_.write();
-        gitIgnore_.write();
+        _gitRepos.write();
+        _gitIgnore.write();
     }
 }
 
