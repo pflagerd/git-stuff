@@ -47,7 +47,7 @@ Teaching them what you're doing comes first. Speed comes second.
 - The repo has three kinds of code:
   - D programs (`*.d`) built with `make` (LDC's `ldmd2` by default, via
     the `DC` variable) into `bin/add-nested`, `bin/pull-nested`,
-    `bin/check-nested` and `bin/remove-nested`.
+    `bin/push-nested`, `bin/check-nested` and `bin/remove-nested`.
     `make setup` (`setup.sh`) installs the required packages.
     `debugio.d` must be linked into every executable (the Makefile's
     `DEBUG_SUPPORT`): in `-debug` builds it makes stdout unbuffered so

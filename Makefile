@@ -11,7 +11,7 @@ DC ?= ldmd2
 DC_PATH := $(or $(shell command -v $(DC) 2>/dev/null),/usr/bin/$(DC))
 
 # The new nested-repo commands, checked by `make test` once built.
-COMMANDS = bin/add-nested bin/check-nested bin/pull-nested bin/remove-nested
+COMMANDS = bin/add-nested bin/check-nested bin/pull-nested bin/push-nested bin/remove-nested
 
 all: $(COMMANDS)
 
@@ -45,6 +45,9 @@ bin/check-nested: checkNested.d $(LIBRARY) $(DEBUG_SUPPORT) | $(DC_PATH)
 bin/pull-nested: pullNested.d $(LIBRARY) $(DEBUG_SUPPORT) | $(DC_PATH)
 	$(DC) -wi -gf -debug pullNested.d $(LIBRARY) $(DEBUG_SUPPORT) -of=bin/pull-nested
 
+bin/push-nested: pushNested.d $(LIBRARY) $(DEBUG_SUPPORT) | $(DC_PATH)
+	$(DC) -wi -gf -debug pushNested.d $(LIBRARY) $(DEBUG_SUPPORT) -of=bin/push-nested
+
 bin/remove-nested: removeNested.d $(LIBRARY) $(DEBUG_SUPPORT) | $(DC_PATH)
 	$(DC) -wi -gf -debug removeNested.d $(LIBRARY) $(DEBUG_SUPPORT) -of=bin/remove-nested
 
@@ -52,7 +55,7 @@ bin/remove-nested: removeNested.d $(LIBRARY) $(DEBUG_SUPPORT) | $(DC_PATH)
 # and an unknown option exits 2 (main() and the argument plumbing, which the
 # in-process tests don't exercise).
 test: $(COMMANDS) | $(DC_PATH)
-	$(DC) -wi -unittest -main $(LIBRARY) addNested.d pullNested.d removeNested.d -run checkNested.d
+	$(DC) -wi -unittest -main $(LIBRARY) addNested.d pullNested.d pushNested.d removeNested.d -run checkNested.d
 	@for c in $(COMMANDS); do \
 	    $$c --help >/dev/null || { echo "$$c --help: expected exit 0" >&2; exit 1; }; \
 	    $$c --no-such-option 2>/dev/null; s=$$?; \

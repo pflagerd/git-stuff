@@ -5,9 +5,9 @@ from, and pushed to their own remotes when the parent repository is cloned,
 checked out, pulled and pushed.
 
 Today the tools register nested repos (`add-nested`), clone the missing ones
-and fast-forward the rest (`pull-nested`), check that everything agrees
-(`check-nested`) and unregister them (`remove-nested`). Pushing is planned
-([#19](https://github.com/pflagerd/git-stuff/issues/19)). Switching branches
+and fast-forward the rest (`pull-nested`), push them (`push-nested`), check
+that everything agrees (`check-nested`) and unregister them
+(`remove-nested`). Switching branches
 across nested repos is deliberately not done: `pull-nested` never changes the
 branch of a repo that already exists, since you may be working in it.
 
@@ -27,17 +27,20 @@ make
 bin/add-nested -C ~/Desktop --clone git@github.com:pflagerd/alpha.git
 bin/add-nested -C ~/Desktop beta
 bin/pull-nested -C ~/Desktop
+bin/push-nested -C ~/Desktop
 bin/check-nested -C ~/Desktop --fix
 ```
 
-1. `make` builds the four commands into `bin/`, installing the D compiler
+1. `make` builds the five commands into `bin/`, installing the D compiler
    first if it's missing (see [Setup and building](#setup-and-building)).
 2. `add-nested --clone <url>` clones a repo into the parent directory given
    with `-C` (here `~/Desktop`) and registers it.
 3. `add-nested beta` registers a clone that's already there, `~/Desktop/beta`.
 4. `pull-nested` clones whatever `.gitrepos` lists that's missing (say, on
    another machine) and fast-forwards the rest.
-5. `check-nested --fix` repairs what it can in `.gitignore` and `.gitrepos`
+5. `push-nested` pushes each nested repo's current branch to all its
+   remotes.
+6. `check-nested --fix` repairs what it can in `.gitignore` and `.gitrepos`
    and reports anything else.
 
 Without `-C`, each command works in the current directory.
@@ -138,8 +141,8 @@ exits non-zero.
 make
 ```
 
-This builds `bin/add-nested`, `bin/pull-nested`, `bin/check-nested` and
-`bin/remove-nested` with debug output compiled in. Every one is linked with
+This builds `bin/add-nested`, `bin/pull-nested`, `bin/push-nested`,
+`bin/check-nested` and `bin/remove-nested` with debug output compiled in. Every one is linked with
 `debugio.d`, which in these `-debug` builds makes standard output
 unbuffered, so output appears line by line when stepping through a program
 in Kate's debugger. Unit tests are not compiled into them; `make test` runs
@@ -157,7 +160,7 @@ make DC=dmd
 
 ## The commands
 
-### What all four share
+### What all five share
 
 | Option | Meaning |
 |---|---|
@@ -223,6 +226,29 @@ own messages shown as they happen:
 A failure in one repo doesn't stop the others. Problems with the two files
 are reported first but don't stop the pull. Git runs with your terminal, so
 ssh can still ask for a passphrase.
+
+### `push-nested [--origin-only] [--parent]`
+
+For each nested repo in `.gitrepos`, under a `== /alpha/` header, pushes the
+current branch (`git push <remote> <branch>`) to **every remote** it has, as
+`bin/push` does; `--origin-only` pushes only to the remote named `origin`.
+It never forces: if a remote has commits you don't, the push is refused
+and reported, and you pull first.
+
+- **Upstream:** if the remote named `origin` exists and the branch has no
+  upstream yet, the push to `origin` is `git push -u origin <branch>`, so
+  `origin/<branch>` becomes its upstream. An upstream already set (to any
+  remote) is left alone.
+- **Skipped, with a warning:** a directory that's missing or isn't a nested
+  repo, a detached HEAD, a repo with no `origin` under `--origin-only`, and a
+  repo on a different branch from the one `.gitrepos` means. For the last,
+  switch branch or record the new one with `add-nested --branch`, then run
+  `push-nested` again; nothing is switched for you.
+- **Uncommitted changes** get a note: only what's committed is pushed.
+- **`--parent`** also pushes the parent directory itself, after the nested
+  repos, by the same rules.
+
+Design: `docs/push-nested-proposal.md`.
 
 ### `check-nested`
 
@@ -329,7 +355,7 @@ and `docs/nested-commands-proposal.md` (the commands):
 
 | File | What it holds |
 |---|---|
-| `addNested.d`, `pullNested.d`, `checkNested.d`, `removeNested.d` | The four commands. Each does its work in a `run()` function; `main()` only calls it. |
+| `addNested.d`, `pullNested.d`, `pushNested.d`, `checkNested.d`, `removeNested.d` | The five commands. Each does its work in a `run()` function; `main()` only calls it. |
 | `nestedCommand.d` | What the commands share: exit statuses, option parsing, printing findings, the branch rules, cloning, and a few git queries. |
 | `parentDirectory.d` | `ParentDirectory`: both files of a parent directory together (add, remove, check, fix, write), and the checks on disk. |
 | `gitIgnore.d` | `GitIgnore`: one `.gitignore`, split around the managed block. |
@@ -358,8 +384,6 @@ the one-line `main()` the in-process tests leave out.
 
 Tracked as GitHub issues:
 
-- [#19](https://github.com/pflagerd/git-stuff/issues/19) `push-nested`: push
-  each nested repo to its own remote.
 - [#7](https://github.com/pflagerd/git-stuff/issues/7) Check that the
   directories named by `.gitignore` lines outside the managed block still
   exist.

@@ -1,6 +1,6 @@
 # push-nested (proposal)
 
-Status: **all decisions made (see Answers); being implemented.** Issue:
+Status: **implemented** in `pushNested.d` (see Answers for the decisions). Issue:
 [#19](https://github.com/pflagerd/git-stuff/issues/19). Builds on
 `docs/nested-commands-proposal.md`: same conventions as the other commands
 (`run()` tested in-process against local repositories, exit statuses 0/1/2,
