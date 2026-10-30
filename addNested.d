@@ -36,7 +36,7 @@ or a file that can't be read.
  *
  * Returns: the exit status.
  */
-int run(string[] args, File output, File errors)
+ExitStatus run(string[] args, File output, File errors)
 {
     CommonOptions common;
     string branch, url, clone;
@@ -123,7 +123,7 @@ int run(string[] args, File output, File errors)
  * memory: add() appends, and only write() sorts, so the objects would look
  * unsorted. Returns: the exit status.
  */
-int checkWritten(string parentDirectory, File output, File errors)
+ExitStatus checkWritten(string parentDirectory, File output, File errors)
 {
     output.flush(); // before the warnings that follow on the error stream
     ParentDirectory written;
@@ -143,7 +143,7 @@ int checkWritten(string parentDirectory, File output, File errors)
  *
  * Returns: the exit status.
  */
-int cloneAndAdd(CommonOptions common, string url, string branch, string urlOption,
+ExitStatus cloneAndAdd(CommonOptions common, string url, string branch, string urlOption,
     const string[] arguments, File output, File errors)
 {
     import std.file : exists;

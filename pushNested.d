@@ -36,7 +36,7 @@ struct PushOptions
  *
  * Returns: the exit status.
  */
-int run(string[] args, File output, File errors)
+ExitStatus run(string[] args, File output, File errors)
 {
     CommonOptions common;
     PushOptions push;

@@ -25,7 +25,7 @@ list. Prints nothing when there are none. Exit status: 0 no problems,
  *
  * Returns: the exit status.
  */
-int run(string[] args, File output, File errors)
+ExitStatus run(string[] args, File output, File errors)
 {
     import std.algorithm.iteration : filter;
     import std.algorithm.searching : count;

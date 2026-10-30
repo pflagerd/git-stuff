@@ -30,7 +30,7 @@ file that can't be read.
  *
  * Returns: the exit status.
  */
-int run(string[] args, File output, File errors)
+ExitStatus run(string[] args, File output, File errors)
 {
     CommonOptions common;
     const parsed = parseOptions(args, common, output, errors, usage);

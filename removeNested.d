@@ -29,7 +29,7 @@ that can't be read.
  *
  * Returns: the exit status.
  */
-int run(string[] args, File output, File errors)
+ExitStatus run(string[] args, File output, File errors)
 {
     import std.algorithm.searching : any, canFind;
     import std.file : exists;
