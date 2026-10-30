@@ -44,7 +44,7 @@ Teaching them what you're doing comes first. Speed comes second.
     lowerCamelCase: `GitReposEntry gitReposEntry`, `ParentDirectory
     parentDirectory`. Arrays take the plural (`gitReposEntries`).
   - Use full words, not abbreviations: `result`, not `r`; `exception`,
-    not `e` or `x`; `finding`, not `f`. Loop indices like `i` may stay.
+    not `e` or `x`; `finding`, not `f`. Loop indices `i`, `j`, `k` stay.
   - Where two values of one type are in scope, or a role says more than
     the type (`output` and `errors` for two `File`s), use the descriptive
     name instead.

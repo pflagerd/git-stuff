@@ -1,5 +1,5 @@
 /**
- * gitCloneDirName: the directory name `git clone <url>` would create.
+ * gitCloneDirectoryName: the directory name `git clone <url>` would create.
  *
  * A line-by-line port of git_url_basename() in git's dir.c:
  *   https://github.com/git/git/blob/master/dir.c
@@ -13,7 +13,7 @@
  */
 module gitCloneDirectoryName;
 
-class NoDirNameException : Exception
+class NoDirectoryNameException : Exception
 {
     this(string url, string file = __FILE__, size_t line = __LINE__) @safe pure
     {
@@ -22,16 +22,19 @@ class NoDirNameException : Exception
     }
 }
 
-private bool isDirSep(char c) pure nothrow @nogc @safe { return c == '/'; }
-
-private bool gitIsSpace(char c) pure nothrow @nogc @safe
+private bool isDirectorySeparator(char character) pure nothrow @nogc @safe
 {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    return character == '/';
 }
 
-private bool gitIsDigit(char c) pure nothrow @nogc @safe
+private bool gitIsSpace(char character) pure nothrow @nogc @safe
 {
-    return c >= '0' && c <= '9';
+    return character == ' ' || character == '\t' || character == '\n' || character == '\r';
+}
+
+private bool gitIsDigit(char character) pure nothrow @nogc @safe
+{
+    return character >= '0' && character <= '9';
 }
 
 /**
@@ -39,7 +42,7 @@ private bool gitIsDigit(char c) pure nothrow @nogc @safe
  *   url      = repository argument exactly as given to `git clone`
  *   isBare   = true for `git clone --bare` / `--mirror` (appends ".git")
  *   isBundle = true when cloning from a local bundle file (strips ".bundle")
- * Throws: NoDirNameException where git would die() with
+ * Throws: NoDirectoryNameException where git would die() with
  *         "No directory name could be guessed."
  */
 string gitCloneDirectoryName(string url, bool isBare = false, bool isBundle = false) @safe
@@ -47,104 +50,157 @@ string gitCloneDirectoryName(string url, bool isBare = false, bool isBundle = fa
     import std.algorithm.searching : canFind, endsWith;
     import std.string : indexOf;
 
+    // start and end bound the part of url still being considered.
     size_t start = 0;
     size_t end   = url.length;
 
     // Skip scheme.
     immutable schemeAt = url.indexOf("://");
     if (schemeAt >= 0)
+    {
         start = schemeAt + 3;
+    }
 
     // Skip authentication data, greedily up to the last '@' before the
     // first '/'.
-    for (size_t p = start; p < end && !isDirSep(url[p]); ++p)
-        if (url[p] == '@')
-            start = p + 1;
+    for (size_t position = start; position < end && !isDirectorySeparator(url[position]); ++position)
+    {
+        if (url[position] == '@')
+        {
+            start = position + 1;
+        }
+    }
 
     // Strip trailing slashes/whitespace, then a trailing "/.git".
-    while (start < end && (isDirSep(url[end - 1]) || gitIsSpace(url[end - 1])))
+    while (start < end && (isDirectorySeparator(url[end - 1]) || gitIsSpace(url[end - 1])))
+    {
         --end;
-    if (end - start > 5 && isDirSep(url[end - 5]) && url[end - 4 .. end] == ".git")
+    }
+    if (end - start > 5 && isDirectorySeparator(url[end - 5]) && url[end - 4 .. end] == ".git")
     {
         end -= 5;
-        while (start < end && isDirSep(url[end - 1]))
+        while (start < end && isDirectorySeparator(url[end - 1]))
+        {
             --end;
+        }
     }
 
     // Strip a trailing ":port" when there is only a host (no '/').
     {
-        auto s = url[start .. end];
-        if (!s.canFind('/') && s.canFind(':'))
+        immutable remaining = url[start .. end];
+        if (!remaining.canFind('/') && remaining.canFind(':'))
         {
-            size_t p = end;
-            while (start < p && gitIsDigit(url[p - 1]))
-                --p;
-            if (start < p && url[p - 1] == ':')
-                end = p - 1;
+            size_t position = end;
+            while (start < position && gitIsDigit(url[position - 1]))
+            {
+                --position;
+            }
+            if (start < position && url[position - 1] == ':')
+            {
+                end = position - 1;
+            }
         }
     }
 
     // Last component; ':' also counts as a separator ("foo:bar.git" -> "bar").
     {
-        size_t p = end;
-        while (start < p && !isDirSep(url[p - 1]) && url[p - 1] != ':')
-            --p;
-        start = p;
+        size_t position = end;
+        while (start < position && !isDirectorySeparator(url[position - 1]) && url[position - 1] != ':')
+        {
+            --position;
+        }
+        start = position;
     }
 
     // Strip ".bundle" or ".git".
     auto name = url[start .. end];
     immutable suffix = isBundle ? ".bundle" : ".git";
     if (name.endsWith(suffix))
+    {
         name = name[0 .. $ - suffix.length];
+    }
 
     if (name.length == 0 || name == "/")
-        throw new NoDirNameException(url);
+    {
+        throw new NoDirectoryNameException(url);
+    }
 
-    string dir = isBare ? name ~ ".git" : name;
+    immutable directoryName = isBare ? name ~ ".git" : name;
 
     // Collapse runs of control characters and whitespace to one space,
     // and drop leading/trailing spaces.
-    char[] outBuf;
-    outBuf.reserve(dir.length);
-    bool prevSpace = true;                 // strips leading whitespace
-    foreach (char ch; dir)
+    char[] collapsed;
+    collapsed.reserve(directoryName.length);
+    bool previousWasSpace = true;          // strips leading whitespace
+    foreach (char character; directoryName)
     {
-        if (ch < 0x20)
-            ch = ' ';
-        if (gitIsSpace(ch))
+        if (character < 0x20)
         {
-            if (prevSpace)
+            character = ' ';
+        }
+        if (gitIsSpace(character))
+        {
+            if (previousWasSpace)
+            {
                 continue;
-            prevSpace = true;
+            }
+            previousWasSpace = true;
         }
         else
-            prevSpace = false;
-        outBuf ~= ch;
+        {
+            previousWasSpace = false;
+        }
+        collapsed ~= character;
     }
-    if (outBuf.length && prevSpace)
-        outBuf = outBuf[0 .. $ - 1];
-    return outBuf.idup;
+    if (collapsed.length && previousWasSpace)
+    {
+        collapsed = collapsed[0 .. $ - 1];
+    }
+    return collapsed.idup;
 }
 
-// ///
-// @safe unittest
-// {
-//     assert(gitCloneDirectoryName("git@github.com:pflagerd/blog-bootstrap.git") == "blog-bootstrap");
-//     assert(gitCloneDirectoryName("ssh://pflagerd@git.code.sf.net/p/pflagerd/kdenlive-bc-memorial-project-b")
-//            == "kdenlive-bc-memorial-project-b");
-//     assert(gitCloneDirectoryName("https://github.com/git/git.git/") == "git");
-//     assert(gitCloneDirectoryName("/srv/repos/proj/.git") == "proj");
-//     assert(gitCloneDirectoryName("git@zax:repo.git", true) == "repo.git");
-// }
+/// Each expected name is what `git clone <url>` printed ("Cloning into
+/// '<name>'...") with git 2.43.0, against hosts that don't exist.
+@safe unittest
+{
+    immutable string[2][] cases = [
+        ["git@nohost.invalid:pflagerd/blog-bootstrap.git", "blog-bootstrap"],
+        ["ssh://pflagerd@nohost.invalid/p/pflagerd/kdenlive-b", "kdenlive-b"],
+        ["https://nohost.invalid/git/git.git/", "git"],           // trailing slash
+        ["https://nohost.invalid/a/repo/.git", "repo"],           // a /.git suffix
+        ["https://nohost.invalid/x/.git", "x"],
+        ["git@nohost.invalid:repo.git", "repo"],
+        ["nohost.invalid:foo:bar.git", "bar"],                    // ':' separates too
+        ["https://user:pw@nohost.invalid/x/My%20Repo.git", "My%20Repo"],
+        ["https://nohost.invalid:8080", "nohost.invalid"],        // host only: port dropped
+        ["ssh://nohost.invalid:22/", "nohost.invalid"],
+        ["https://nohost.invalid/", "nohost.invalid"],
+        ["ssh://nohost.invalid/x/foo.git//  ", "foo"],            // trailing slashes, spaces
+        ["https://nohost.invalid/x/bar.bundle", "bar.bundle"],    // not a bundle clone
+        ["https://nohost.invalid/x/ my   repo .git", "my repo"],  // spaces collapsed, trimmed
+        ["https://nohost.invalid/x/a\tb.git", "a b"],             // a tab becomes a space
+    ];
+    foreach (testCase; cases)
+    {
+        assert(gitCloneDirectoryName(testCase[0]) == testCase[1], testCase[0]);
+    }
 
-// version (GitCloneDirMain)
-// void main(string[] args)
-// {
-//     import std.stdio : stderr, writeln;
-//     foreach (a; args[1 .. $])
-//     {
-//         try writeln(gitCloneDirName(a));
-//         catch (NoDirNameException e) { stderr.writeln(e.msg); writeln("<die>"); }
-//     }
-// }
+    // git clone --bare: "Cloning into bare repository 'repo.git'...".
+    assert(gitCloneDirectoryName("git@nohost.invalid:repo.git", true) == "repo.git");
+}
+
+/// Where git says "No directory name could be guessed", this throws.
+@safe unittest
+{
+    import std.exception : assertThrown;
+
+    assertThrown!NoDirectoryNameException(gitCloneDirectoryName("https://:@/"));
+    assertThrown!NoDirectoryNameException(gitCloneDirectoryName("nohost.invalid:.git"));
+}
+
+/// A bundle clone strips ".bundle" instead of ".git". This one is read from
+/// git's dir.c, not checked against git: a bundle needs a real file.
+@safe unittest
+{
+    assert(gitCloneDirectoryName("/backups/project.bundle", false, true) == "project");
+}

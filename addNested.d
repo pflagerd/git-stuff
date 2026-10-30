@@ -149,7 +149,7 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
 {
     import std.file : exists;
     import std.path : buildPath;
-    import gitCloneDirectoryName : gitCloneDirectoryName, NoDirNameException;
+    import gitCloneDirectoryName : gitCloneDirectoryName, NoDirectoryNameException;
     import nestedCommon : cloneNested;
 
     if (urlOption.length)
@@ -180,7 +180,7 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
         {
             argument = gitCloneDirectoryName(url);
         }
-        catch (NoDirNameException)
+        catch (NoDirectoryNameException)
         {
             errors.writeln("add-nested: can't guess a directory name from '", url,
                 "'; give one after the url");

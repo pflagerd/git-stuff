@@ -374,7 +374,7 @@ make test
 ```
 
 This compiles and runs the D `unittest` blocks in all the files above (not
-`gitCloneDirectoryName.d` or `debugio.d`, which have none). The commands are
+`debugio.d`, which has none). The commands are
 tested in-process, by calling their `run()` functions against local
 repositories in a temporary directory, so no network or SSH key is needed.
 Then `make test` builds each command (the `COMMANDS` list in the `Makefile`)

@@ -162,13 +162,13 @@ string lastComponent(string directory) @safe pure
  */
 bool namesDiffer(string directory, string url) @safe
 {
-    import gitCloneDirectoryName : gitCloneDirectoryName, NoDirNameException;
+    import gitCloneDirectoryName : gitCloneDirectoryName, NoDirectoryNameException;
 
     try
     {
         return lastComponent(directory) != gitCloneDirectoryName(url);
     }
-    catch (NoDirNameException)
+    catch (NoDirectoryNameException)
     {
         return true;
     }
