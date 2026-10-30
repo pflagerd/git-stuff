@@ -33,7 +33,19 @@ struct CommonOptions
 struct Parsed
 {
     bool proceed;   /// true: run the command; false: exit with `exitStatus`
-    int exitStatus; /// meaningful only when `proceed` is false
+
+    /**
+     * The status to exit with when `proceed` is false. parseOptions sets
+     * one of:
+     * - ExitStatus.ok (0): -h or --help was given, and the usage has been
+     *   printed to the output;
+     * - ExitStatus.usage (2): an unknown or malformed option (e.g. a
+     *   missing value), and a message has been printed to the errors.
+     *
+     * It is never ExitStatus.findings (1). When `proceed` is true it is
+     * left at ExitStatus.ok and callers ignore it.
+     */
+    int exitStatus;
 }
 
 /**
