@@ -60,6 +60,12 @@ Teaching them what you're doing comes first. Speed comes second.
   - Don't reuse a name declared in D's runtime module `object` (`string`,
     `size_t`, `Object`, ...). They aren't keywords, so the compiler lets
     a variable hide them; pick another name rather than adding `_`.
+- Results in D code (decision in `docs/result-types.md`, issue #20): a
+  function that can fail in ways a caller may need to tell apart returns
+  a `@mustuse` struct holding an enum of what happened and a message
+  for the person. One enum per function, listing only what it can
+  produce; callers use `final switch` on it. Don't use a `""` or `null`
+  string as a status.
 
 ### Tests
 - A test must not depend on a git default that can change between git

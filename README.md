@@ -351,8 +351,9 @@ a directory one level below the parent directory:
 
 ## Source files
 
-The D code, with its designs in `docs/nested-repos-design.md` (the classes)
-and `docs/nested-commands-proposal.md` (the commands):
+The D code, with its designs in `docs/nested-repos-design.md` (the classes),
+`docs/nested-commands-proposal.md` (the commands) and `docs/result-types.md`
+(how functions report failures):
 
 | File | What it holds |
 |---|---|
