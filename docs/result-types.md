@@ -1,6 +1,6 @@
 # Results instead of status strings (decision)
 
-Status: **decided**; conversion in progress. Issue:
+Status: **decided**; conversion in progress (step 1, `cloneNested`, done). Issue:
 [#20](https://github.com/pflagerd/git-stuff/issues/20).
 
 ## The problem

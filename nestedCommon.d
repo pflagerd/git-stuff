@@ -1,12 +1,13 @@
 /**
  * What the nested-repo commands (check-nested, add-nested, remove-nested,
- * pull-nested) share: exit statuses, option parsing, printing findings, the
+ * pull-nested, push-nested) share: exit statuses, option parsing, printing findings, the
  * branch rules, and a few git queries.
  *
  * Design: docs/nested-commands-proposal.md
  */
 module nestedCommon;
 
+import core.attribute : mustuse;
 import std.stdio : File;
 
 import finding : Finding;
@@ -296,6 +297,22 @@ bool runGit(string[] args, File output, File errors)
         Config.retainStdout | Config.retainStderr)) == 0;
 }
 
+/// What cloneNested did.
+enum CloneOutcome
+{
+    cloned,         /// cloned, and on the branch it should be on
+    cloneFailed,    /// git clone failed; nothing was left behind
+    checkoutFailed, /// cloned, but the branch couldn't be checked out; the clone stays
+}
+
+/// cloneNested's result: what happened, and a message for her to read.
+/// Design: docs/result-types.md
+@mustuse struct CloneResult
+{
+    CloneOutcome outcome;
+    string message; /// "" when outcome is cloned
+}
+
 /**
  * Clones `url` into `onDisk` (which must not exist) and checks out the
  * branch branchAfterClone gives for the nested `directory` and
@@ -304,15 +321,16 @@ bool runGit(string[] args, File output, File errors)
  * `output` that the clone stays on the default branch. add-nested --clone
  * and pull-nested both clone this way.
  *
- * Returns: "" on success, else what went wrong. If the clone itself failed,
- * git leaves nothing behind; if only the checkout failed, the clone stays.
+ * Returns: what happened, and a message for her when it failed. If the
+ * clone itself failed, git leaves nothing behind; if only the checkout
+ * failed, the clone stays.
  */
-string cloneNested(string onDisk, string directory, string url, string listedBranch,
+CloneResult cloneNested(string onDisk, string directory, string url, string listedBranch,
     File output, File errors)
 {
     if (!runGit(["clone", url, onDisk], output, errors))
     {
-        return "git clone failed";
+        return CloneResult(CloneOutcome.cloneFailed, "git clone failed");
     }
     immutable target = branchAfterClone(directory, url, listedBranch,
         (string candidate) => remoteHasBranch(onDisk, candidate));
@@ -320,7 +338,8 @@ string cloneNested(string onDisk, string directory, string url, string listedBra
     {
         if (!runGit(["-C", onDisk, "checkout", "--quiet", target], output, errors))
         {
-            return "cloned, but could not check out branch '" ~ target ~ "'";
+            return CloneResult(CloneOutcome.checkoutFailed,
+                "cloned, but could not check out branch '" ~ target ~ "'");
         }
     }
     else if (target.length == 0 && listedBranch.length == 0 && namesDiffer(directory, url))
@@ -328,7 +347,7 @@ string cloneNested(string onDisk, string directory, string url, string listedBra
         output.writeln("no branch \"", lastComponent(directory),
             "\" on the remote; staying on ", currentBranch(onDisk));
     }
-    return "";
+    return CloneResult(CloneOutcome.cloned, "");
 }
 
 // --- tests: options ------------------------------------------------------------
@@ -540,6 +559,48 @@ version (unittest)
         const result = execute(["git"] ~ args);
         assert(result.status == 0, result.output);
     }
+}
+
+/// cloneNested's three outcomes, and what each leaves on disk.
+unittest
+{
+    import std.file : exists;
+
+    immutable directory = testDirectory("nestedCommon-cloneNested");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    // A remote with branches develop (default) and blog.
+    immutable remote = buildPath(directory, "remote.git");
+    immutable seed = buildPath(directory, "seed");
+    git("init", "-q", "--bare", "-b", "develop", remote);
+    git("init", "-q", "-b", "develop", seed);
+    git("-C", seed, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+        "--allow-empty", "-m", "init");
+    git("-C", seed, "push", "-q", remote, "develop", "develop:blog");
+
+    CloneResult cloneResult;
+    void clone(string name, string url, string listedBranch)
+    {
+        captured(directory, (File output, File errors) {
+            cloneResult = cloneNested(buildPath(directory, name), "/" ~ name ~ "/", url,
+                listedBranch, output, errors);
+        });
+    }
+
+    clone("blog-copy", remote, "blog");
+    assert(cloneResult.outcome == CloneOutcome.cloned && cloneResult.message == "");
+    assert(currentBranch(buildPath(directory, "blog-copy")) == "blog");
+
+    clone("nowhere", buildPath(directory, "missing.git"), "");
+    assert(cloneResult.outcome == CloneOutcome.cloneFailed);
+    assert(!buildPath(directory, "nowhere").exists);
+
+    clone("kept", remote, "no-such-branch");
+    assert(cloneResult.outcome == CloneOutcome.checkoutFailed);
+    assert(buildPath(directory, "kept").exists);
 }
 
 /// The queries against real local repositories.

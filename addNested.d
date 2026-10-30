@@ -150,7 +150,7 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
     import std.file : exists;
     import std.path : buildPath;
     import gitCloneDirectoryName : gitCloneDirectoryName, NoDirectoryNameException;
-    import nestedCommon : cloneNested;
+    import nestedCommon : CloneOutcome, cloneNested;
 
     if (urlOption.length)
     {
@@ -210,13 +210,20 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
         return ExitStatus.findings;
     }
 
-    immutable failure = cloneNested(onDisk, directory, url, branch, output, errors);
-    if (failure.length)
+    const cloneResult = cloneNested(onDisk, directory, url, branch, output, errors);
+    final switch (cloneResult.outcome)
     {
+    case CloneOutcome.cloned:
+        break;
+    case CloneOutcome.cloneFailed:
         output.flush();
-        errors.writeln("add-nested: ", directory, ": ", failure,
-            onDisk.exists ? "; the clone is kept but not registered (add-nested "
-                ~ argument ~ " registers it once it's sorted out)" : "");
+        errors.writeln("add-nested: ", directory, ": ", cloneResult.message);
+        return ExitStatus.findings;
+    case CloneOutcome.checkoutFailed:
+        output.flush();
+        errors.writeln("add-nested: ", directory, ": ", cloneResult.message,
+            "; the clone is kept but not registered (add-nested ", argument,
+            " registers it once it's sorted out)");
         return ExitStatus.findings;
     }
 

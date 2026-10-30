@@ -9,7 +9,7 @@ module pullNested;
 import std.stdio : File;
 
 import gitRepos : GitReposEntry;
-import nestedCommon : branchAfterClone, cloneNested, CommonOptions, currentBranch,
+import nestedCommon : branchAfterClone, CloneOutcome, cloneNested, CommonOptions, currentBranch,
     ExitStatus, loadParent, parseOptions, printFindings, remoteDefaultBranch,
     remoteHasBranch, runGit;
 import parentDirectory : ParentDirectory;
@@ -104,14 +104,17 @@ bool pullOne(string parentDirectory, const GitReposEntry gitReposEntry, File out
 
     if (!onDisk.exists)
     {
-        immutable failure = cloneNested(onDisk, gitReposEntry.directory, gitReposEntry.url, gitReposEntry.branch,
-            output, errors);
-        if (failure.length)
+        const cloneResult = cloneNested(onDisk, gitReposEntry.directory, gitReposEntry.url,
+            gitReposEntry.branch, output, errors);
+        final switch (cloneResult.outcome)
         {
-            problem(failure);
+        case CloneOutcome.cloned:
+            return true;
+        case CloneOutcome.cloneFailed:
+        case CloneOutcome.checkoutFailed:
+            problem(cloneResult.message);
             return false;
         }
-        return true;
     }
 
     immutable notRepository = ParentDirectory.repositoryProblem(gitReposEntry.directory, onDisk);
