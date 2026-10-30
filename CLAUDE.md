@@ -61,6 +61,13 @@ Teaching them what you're doing comes first. Speed comes second.
     `size_t`, `Object`, ...). They aren't keywords, so the compiler lets
     a variable hide them; pick another name rather than adding `_`.
 
+### Tests
+- A test must not depend on a git default that can change between git
+  versions. Set up the state the test needs explicitly. For example, git
+  2.48 made `git fetch` create a missing `origin/HEAD`, which broke a test
+  that assumed fetch leaves none; the test now deletes it with
+  `git remote set-head origin --delete`.
+
 ### Project facts: `README.md` and `TODO`
 - `README.md` states the project's goal: nested git repositories that are
   cloned, checked out, pulled and pushed along with their parent. `TODO`
