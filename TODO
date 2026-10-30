@@ -15,7 +15,7 @@ check the nested repos on disk; Finding (finding.d) and textFile.d support
 them.
 
 Next: the commands in docs/nested-commands-proposal.md (all its decisions are made), in steps:
-1. nestedCommand.d (shared) - done.
+1. nestedCommon.d (shared) - done.
 2. check-nested - done.
 3. remove-nested - done.
 4. add-nested <directory>... - done; it replaces the old bin/add-nested, and add_nested.d and test_add_nested.py are deleted.

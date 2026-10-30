@@ -9,7 +9,7 @@ module checkNested;
 
 import std.stdio : File;
 
-import nestedCommand : CommonOptions, ExitStatus, loadParent, parseOptions, printFindings;
+import nestedCommon : CommonOptions, ExitStatus, loadParent, parseOptions, printFindings;
 import parentDirectory : ParentDirectory;
 
 enum usage = "Usage: check-nested [-C <directory>] [--fix]
@@ -93,7 +93,7 @@ version (unittest)
 {
     import std.file : exists, mkdirRecurse, readText, rmdirRecurse, write;
     import std.path : buildPath;
-    import nestedCommand : captured, git;
+    import nestedCommon : captured, git;
     import textFile : testDirectory;
     import gitIgnore : beginMarker, endMarker;
 

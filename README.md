@@ -357,7 +357,7 @@ and `docs/nested-commands-proposal.md` (the commands):
 | File | What it holds |
 |---|---|
 | `addNested.d`, `pullNested.d`, `pushNested.d`, `checkNested.d`, `removeNested.d` | The five commands. Each does its work in a `run()` function; `main()` only calls it. |
-| `nestedCommand.d` | What the commands share: exit statuses, option parsing, printing findings, the branch rules, cloning, and a few git queries. |
+| `nestedCommon.d` | What the commands share: exit statuses, option parsing, printing findings, the branch rules, cloning, and a few git queries. |
 | `parentDirectory.d` | `ParentDirectory`: both files of a parent directory together (add, remove, check, fix, write), and the checks on disk. |
 | `gitIgnore.d` | `GitIgnore`: one `.gitignore`, split around the managed block. |
 | `gitRepos.d` | `GitRepos`: one `.gitrepos`, and its escaping. |

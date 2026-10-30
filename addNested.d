@@ -9,7 +9,7 @@ module addNested;
 import std.stdio : File;
 
 import gitRepos : GitRepos, GitReposEntry;
-import nestedCommand : branchCanBeOmitted, CommonOptions, currentBranch, ExitStatus,
+import nestedCommon : branchCanBeOmitted, CommonOptions, currentBranch, ExitStatus,
     loadParent, parseOptions, printFindings, remoteDefaultBranch, remoteHasBranch;
 import parentDirectory : ParentDirectory;
 
@@ -138,7 +138,7 @@ int checkWritten(string parentDirectory, File output, File errors)
 /**
  * add-nested --clone <url> [<nested directory>]: everything is checked
  * before the network is used (the command line, both files, the target
- * directory), then the clone is made with nestedCommand.cloneNested (as
+ * directory), then the clone is made with nestedCommon.cloneNested (as
  * pull-nested makes them) and registered like an existing clone.
  *
  * Returns: the exit status.
@@ -149,7 +149,7 @@ int cloneAndAdd(CommonOptions common, string url, string branch, string urlOptio
     import std.file : exists;
     import std.path : buildPath;
     import gitCloneDirectoryName : gitCloneDirectoryName, NoDirNameException;
-    import nestedCommand : cloneNested;
+    import nestedCommon : cloneNested;
 
     if (urlOption.length)
     {
@@ -358,7 +358,7 @@ version (unittest)
 {
     import std.file : exists, mkdirRecurse, readText, rmdirRecurse, write;
     import std.path : buildPath;
-    import nestedCommand : captured, git;
+    import nestedCommon : captured, git;
     import textFile : testDirectory;
     import gitIgnore : beginMarker, endMarker;
 

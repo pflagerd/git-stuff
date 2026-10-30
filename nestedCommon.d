@@ -5,7 +5,7 @@
  *
  * Design: docs/nested-commands-proposal.md
  */
-module nestedCommand;
+module nestedCommon;
 
 import std.stdio : File;
 
@@ -356,7 +356,7 @@ version (unittest)
 /// Defaults; -C and --fix; positional arguments are left in args.
 unittest
 {
-    immutable directory = testDirectory("nestedCommand-options");
+    immutable directory = testDirectory("nestedCommon-options");
     scope (exit)
     {
         directory.rmdirRecurse;
@@ -381,7 +381,7 @@ unittest
 /// A command's own options are parsed alongside the shared ones.
 unittest
 {
-    immutable directory = testDirectory("nestedCommand-options-extra");
+    immutable directory = testDirectory("nestedCommon-options-extra");
     scope (exit)
     {
         directory.rmdirRecurse;
@@ -402,7 +402,7 @@ unittest
 {
     import std.algorithm.searching : canFind;
 
-    immutable directory = testDirectory("nestedCommand-help");
+    immutable directory = testDirectory("nestedCommon-help");
     scope (exit)
     {
         directory.rmdirRecurse;
@@ -426,7 +426,7 @@ unittest
 {
     import std.algorithm.searching : canFind;
 
-    immutable directory = testDirectory("nestedCommand-usage");
+    immutable directory = testDirectory("nestedCommon-usage");
     scope (exit)
     {
         directory.rmdirRecurse;
@@ -450,7 +450,7 @@ unittest
 /// Findings are printed as warnings, fixable ones noted.
 unittest
 {
-    immutable directory = testDirectory("nestedCommand-findings");
+    immutable directory = testDirectory("nestedCommon-findings");
     scope (exit)
     {
         directory.rmdirRecurse;
@@ -534,7 +534,7 @@ version (unittest)
 /// The queries against real local repositories.
 unittest
 {
-    immutable directory = testDirectory("nestedCommand-git");
+    immutable directory = testDirectory("nestedCommon-git");
     scope (exit)
     {
         directory.rmdirRecurse;

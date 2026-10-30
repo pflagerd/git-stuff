@@ -10,7 +10,7 @@ module pushNested;
 import std.stdio : File;
 
 import gitRepos : GitReposEntry;
-import nestedCommand : branchAfterClone, CommonOptions, currentBranch, ExitStatus,
+import nestedCommon : branchAfterClone, CommonOptions, currentBranch, ExitStatus,
     loadParent, parseOptions, printFindings, remoteDefaultBranch, remoteHasBranch, runGit;
 import parentDirectory : ParentDirectory;
 
@@ -281,14 +281,14 @@ version (unittest)
     import std.path : buildPath;
     import std.process : execute;
     import std.string : strip;
-    import nestedCommand : captured;
+    import nestedCommon : captured;
     import textFile : testDirectory;
-    static import nestedCommand;
+    static import nestedCommon;
 
     /// Runs git, failing the test if it fails.
     private void sh(string[] args...)
     {
-        nestedCommand.git(args);
+        nestedCommon.git(args);
     }
 
     /// Runs push-nested on `parent`; returns the exit status, and what went

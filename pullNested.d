@@ -9,7 +9,7 @@ module pullNested;
 import std.stdio : File;
 
 import gitRepos : GitReposEntry;
-import nestedCommand : branchAfterClone, cloneNested, CommonOptions, currentBranch,
+import nestedCommon : branchAfterClone, cloneNested, CommonOptions, currentBranch,
     ExitStatus, loadParent, parseOptions, printFindings, remoteDefaultBranch,
     remoteHasBranch, runGit;
 import parentDirectory : ParentDirectory;
@@ -165,14 +165,14 @@ version (unittest)
     import std.file : exists, mkdirRecurse, readText, rmdirRecurse, write;
     import std.path : buildPath;
     import gitRepos : escapeField;
-    import nestedCommand : captured;
+    import nestedCommon : captured;
     import textFile : testDirectory;
-    static import nestedCommand;
+    static import nestedCommon;
 
-    /// Runs git, failing the test if it fails (nestedCommand's helper).
+    /// Runs git, failing the test if it fails (nestedCommon's helper).
     private void sh(string[] args...)
     {
-        nestedCommand.git(args);
+        nestedCommon.git(args);
     }
 
     /// Runs pull-nested on `parent`; returns the exit status, and what went

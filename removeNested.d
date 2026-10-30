@@ -8,7 +8,7 @@ module removeNested;
 
 import std.stdio : File;
 
-import nestedCommand : CommonOptions, ExitStatus, loadParent, parseOptions, printFindings;
+import nestedCommon : CommonOptions, ExitStatus, loadParent, parseOptions, printFindings;
 import parentDirectory : ParentDirectory;
 
 enum usage = "Usage: remove-nested [-C <directory>] [--fix] <nested directory>...
@@ -122,7 +122,7 @@ version (unittest)
 {
     import std.file : exists, mkdirRecurse, readText, rmdirRecurse, write;
     import std.path : buildPath;
-    import nestedCommand : captured;
+    import nestedCommon : captured;
     import textFile : testDirectory;
     import gitIgnore : beginMarker, endMarker;
 

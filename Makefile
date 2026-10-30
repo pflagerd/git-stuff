@@ -34,7 +34,7 @@ clean:
 DEBUG_SUPPORT = debugio.d
 
 # Sources every command is built from, besides its own file.
-LIBRARY = nestedCommand.d parentDirectory.d gitIgnore.d gitRepos.d finding.d textFile.d gitCloneDirectoryName.d
+LIBRARY = nestedCommon.d parentDirectory.d gitIgnore.d gitRepos.d finding.d textFile.d gitCloneDirectoryName.d
 
 bin/add-nested: addNested.d $(LIBRARY) $(DEBUG_SUPPORT) | $(DC_PATH)
 	$(DC) -wi -gf -debug addNested.d $(LIBRARY) $(DEBUG_SUPPORT) -of=bin/add-nested
