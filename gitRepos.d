@@ -14,6 +14,7 @@
  */
 module gitRepos;
 
+import core.attribute : mustuse;
 import std.conv : to;
 
 import finding : Finding;
@@ -34,6 +35,25 @@ class GitReposException : Exception
     {
         super(message, file, line);
     }
+}
+
+/// What GitRepos.validate found: valid, or the first rule an entry breaks.
+enum ValidationOutcome
+{
+    valid,                     /// every rule holds
+    tooManySlashesInDirectory, /// "//" in the directory
+    emptyDirectory,            /// nothing left after normalizing the directory
+    emptyUrl,                  /// no url
+    tooManySlashesInUrl,       /// "//" in the url, other than right after a scheme
+    tooManySlashesInBranch,    /// "//" in the branch, which git forbids in ref names
+}
+
+/// validate's result: what was found, and a message for her to read.
+/// Design: docs/result-types.md
+@mustuse struct ValidationResult
+{
+    ValidationOutcome outcome;
+    string message; /// "" when outcome is valid
 }
 
 class GitRepos
@@ -94,10 +114,15 @@ class GitRepos
 
             auto gitReposEntry = GitReposEntry(unescapeField(fields[0]), unescapeField(fields[1]),
                 fields.length == 3 ? unescapeField(fields[2]) : "");
-            immutable problem = validate(gitReposEntry);
-            if (problem !is null)
+            const validationResult = validate(gitReposEntry);
+            with (ValidationOutcome) final switch (validationResult.outcome)
             {
-                throw new GitReposException("line " ~ lineNumber.to!string ~ ": " ~ problem);
+            case valid:
+                break;
+            case tooManySlashesInDirectory, emptyDirectory, emptyUrl, tooManySlashesInUrl,
+                tooManySlashesInBranch:
+                throw new GitReposException("line " ~ lineNumber.to!string ~ ": "
+                    ~ validationResult.message);
             }
             gitReposEntries ~= gitReposEntry;
         }
@@ -107,36 +132,40 @@ class GitRepos
 
     /**
      * Normalizes `gitReposEntry.directory` to "/alpha/" form and checks the entry
-     * against the rules both parse() and add() enforce. Returns a message
-     * describing the first problem, or null if there is none.
+     * against the rules both parse() and add() enforce.
+     *
+     * Returns: valid, or the first rule broken and a message describing it.
      */
-    static string validate(ref GitReposEntry gitReposEntry) @safe pure
+    static ValidationResult validate(ref GitReposEntry gitReposEntry) @safe pure
     {
         import std.algorithm.searching : canFind;
 
         if (gitReposEntry.directory.canFind("//"))
         {
-            return "too many slashes in directory '" ~ gitReposEntry.directory ~ "'";
+            return ValidationResult(ValidationOutcome.tooManySlashesInDirectory,
+                "too many slashes in directory '" ~ gitReposEntry.directory ~ "'");
         }
         gitReposEntry.directory = normalizeDirectory(gitReposEntry.directory);
         if (gitReposEntry.directory.length == 0)
         {
-            return "empty directory";
+            return ValidationResult(ValidationOutcome.emptyDirectory, "empty directory");
         }
         if (gitReposEntry.url.length == 0)
         {
-            return "empty url";
+            return ValidationResult(ValidationOutcome.emptyUrl, "empty url");
         }
         if (!urlSlashesOk(gitReposEntry.url))
         {
-            return "too many slashes in url '" ~ gitReposEntry.url ~ "'";
+            return ValidationResult(ValidationOutcome.tooManySlashesInUrl,
+                "too many slashes in url '" ~ gitReposEntry.url ~ "'");
         }
         // git-check-ref-format: no multiple consecutive slashes.
         if (gitReposEntry.branch.canFind("//"))
         {
-            return "too many slashes in branch '" ~ gitReposEntry.branch ~ "'";
+            return ValidationResult(ValidationOutcome.tooManySlashesInBranch,
+                "too many slashes in branch '" ~ gitReposEntry.branch ~ "'");
         }
-        return null;
+        return ValidationResult(ValidationOutcome.valid, "");
     }
 
     /**
@@ -153,10 +182,14 @@ class GitRepos
         import std.algorithm.iteration : filter;
         import std.array : array;
 
-        immutable problem = validate(gitReposEntry);
-        if (problem !is null)
+        const validationResult = validate(gitReposEntry);
+        with (ValidationOutcome) final switch (validationResult.outcome)
         {
-            throw new GitReposException("add(): " ~ problem);
+        case valid:
+            break;
+        case tooManySlashesInDirectory, emptyDirectory, emptyUrl, tooManySlashesInUrl,
+            tooManySlashesInBranch:
+            throw new GitReposException("add(): " ~ validationResult.message);
         }
         gitReposEntries = gitReposEntries.filter!(existing => existing.directory != gitReposEntry.directory).array ~ gitReposEntry;
     }
@@ -904,4 +937,29 @@ unittest
 
     const findings = fromText(directory, "/alpha/ a.git\n/alpha/ b.git\n").check;
     assert(findings.length == 1 && findings[0].directory == "/alpha/");
+}
+
+/// validate's six outcomes; a valid entry also has its directory normalized.
+@safe unittest
+{
+    ValidationOutcome outcomeOf(string directory, string url, string branch)
+    {
+        auto gitReposEntry = GitReposEntry(directory, url, branch);
+        return GitRepos.validate(gitReposEntry).outcome;
+    }
+
+    with (ValidationOutcome)
+    {
+        assert(outcomeOf("alpha", "git@github.com:pflagerd/alpha.git", "dev") == valid);
+        assert(outcomeOf("a//b", "a.git", "") == tooManySlashesInDirectory);
+        assert(outcomeOf("/", "a.git", "") == emptyDirectory);
+        assert(outcomeOf("alpha", "", "") == emptyUrl);
+        assert(outcomeOf("alpha", "host//a.git", "") == tooManySlashesInUrl);
+        assert(outcomeOf("alpha", "a.git", "feature//x") == tooManySlashesInBranch);
+    }
+
+    auto gitReposEntry = GitReposEntry("tools/alpha", "a.git", "");
+    const validationResult = GitRepos.validate(gitReposEntry);
+    assert(validationResult.outcome == ValidationOutcome.valid && validationResult.message == "");
+    assert(gitReposEntry.directory == "/tools/alpha/");
 }

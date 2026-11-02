@@ -1,6 +1,6 @@
 # Results instead of status strings (decision)
 
-Status: **decided**; conversion in progress (steps 1 and 2 done). Issue:
+Status: **decided**; conversion in progress (steps 1–3 done). Issue:
 [#20](https://github.com/pflagerd/git-stuff/issues/20).
 
 ## The problem
@@ -82,6 +82,6 @@ One function per commit, each with `make test` passing:
 1. `cloneNested`: the one where the string lost information. Done.
 2. `ParentDirectory.repositoryProblem`, renamed `checkRepository` since it
    now reports success too. Done.
-3. `GitRepos.validate`
+3. `GitRepos.validate`: `ValidationResult`, no more `null`. Done.
 4. `directoryProblem`
 5. `entryFor`, which combines the others.

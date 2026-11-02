@@ -8,7 +8,7 @@ module addNested;
 
 import std.stdio : File;
 
-import gitRepos : GitRepos, GitReposEntry;
+import gitRepos : GitRepos, GitReposEntry, ValidationOutcome;
 import nestedCommon : branchCanBeOmitted, CommonOptions, currentBranch, ExitStatus,
     loadParent, parseOptions, printFindings, remoteDefaultBranch, remoteHasBranch;
 import parentDirectory : ParentDirectory, RepositoryOutcome;
@@ -194,8 +194,16 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
     if (invalid.length == 0)
     {
         auto planned = GitReposEntry(directory, url, branch);
-        immutable problem = GitRepos.validate(planned);
-        invalid = problem is null ? "" : problem;
+        const validationResult = GitRepos.validate(planned);
+        with (ValidationOutcome) final switch (validationResult.outcome)
+        {
+        case valid:
+            break;
+        case tooManySlashesInDirectory, emptyDirectory, emptyUrl, tooManySlashesInUrl,
+            tooManySlashesInBranch:
+            invalid = validationResult.message;
+            break;
+        }
     }
     if (invalid.length)
     {
@@ -336,8 +344,15 @@ string entryFor(string parentDirectory, string argument, string branch, string u
     }
 
     gitReposEntry = GitReposEntry(directory, recordedUrl, recordedBranch);
-    immutable invalid = GitRepos.validate(gitReposEntry);
-    return invalid is null ? "" : invalid;
+    const validationResult = GitRepos.validate(gitReposEntry);
+    with (ValidationOutcome) final switch (validationResult.outcome)
+    {
+    case valid:
+        return "";
+    case tooManySlashesInDirectory, emptyDirectory, emptyUrl, tooManySlashesInUrl,
+        tooManySlashesInBranch:
+        return validationResult.message;
+    }
 }
 
 /// The stored url of the repository's origin remote (`remote.origin.url`,
