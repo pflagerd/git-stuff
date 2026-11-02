@@ -1,6 +1,6 @@
 # Results instead of status strings (decision)
 
-Status: **decided**; conversion in progress (step 1, `cloneNested`, done). Issue:
+Status: **decided**; conversion in progress (steps 1 and 2 done). Issue:
 [#20](https://github.com/pflagerd/git-stuff/issues/20).
 
 ## The problem
@@ -14,7 +14,7 @@ one case, `null`) meaning success:
 | `entryFor` | `addNested.d` (also passes on the others' messages) |
 | `GitRepos.validate` | `gitRepos.d` (returned `null`, not `""`) |
 | `cloneNested` | `nestedCommon.d` |
-| `ParentDirectory.repositoryProblem` | `parentDirectory.d` |
+| `ParentDirectory.repositoryProblem` (now `checkRepository`) | `parentDirectory.d` |
 
 What that cost:
 
@@ -79,8 +79,9 @@ pattern and a separate issue (`Nullable`).
 
 One function per commit, each with `make test` passing:
 
-1. `cloneNested`: the one where the string lost information.
-2. `ParentDirectory.repositoryProblem`
+1. `cloneNested`: the one where the string lost information. Done.
+2. `ParentDirectory.repositoryProblem`, renamed `checkRepository` since it
+   now reports success too. Done.
 3. `GitRepos.validate`
 4. `directoryProblem`
 5. `entryFor`, which combines the others.

@@ -24,7 +24,7 @@ when there is none
 
 For each `.gitrepos` entry, in order, under a `== /dir/` header:
 
-- **Missing, or not a nested repo** (`repositoryProblem`): warning; skipped.
+- **Missing, or not a nested repo** (`ParentDirectory.checkRepository`): warning; skipped.
 - **Detached HEAD:** warning; skipped (there is no branch to push).
 - **Otherwise:** push the current branch: `git push <remote> HEAD`, which
   pushes it to the branch of the same name on that remote, without needing

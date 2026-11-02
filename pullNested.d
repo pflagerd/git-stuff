@@ -12,7 +12,7 @@ import gitRepos : GitReposEntry;
 import nestedCommon : branchAfterClone, CloneOutcome, cloneNested, CommonOptions, currentBranch,
     ExitStatus, loadParent, parseOptions, printFindings, remoteDefaultBranch,
     remoteHasBranch, runGit;
-import parentDirectory : ParentDirectory;
+import parentDirectory : ParentDirectory, RepositoryOutcome;
 
 enum usage = "Usage: pull-nested [-C <directory>] [--fix]
 
@@ -117,10 +117,13 @@ bool pullOne(string parentDirectory, const GitReposEntry gitReposEntry, File out
         }
     }
 
-    immutable notRepository = ParentDirectory.repositoryProblem(gitReposEntry.directory, onDisk);
-    if (notRepository.length)
+    const repositoryResult = ParentDirectory.checkRepository(gitReposEntry.directory, onDisk);
+    with (RepositoryOutcome) final switch (repositoryResult.outcome)
     {
-        problem(notRepository ~ "; skipped");
+    case repository:
+        break;
+    case missing, notDirectory, notGitRepository, insideRepository:
+        problem(repositoryResult.message ~ "; skipped");
         return false;
     }
 

@@ -11,7 +11,7 @@ import std.stdio : File;
 import gitRepos : GitRepos, GitReposEntry;
 import nestedCommon : branchCanBeOmitted, CommonOptions, currentBranch, ExitStatus,
     loadParent, parseOptions, printFindings, remoteDefaultBranch, remoteHasBranch;
-import parentDirectory : ParentDirectory;
+import parentDirectory : ParentDirectory, RepositoryOutcome;
 
 enum usage = "Usage: add-nested [-C <directory>] [--fix] [--branch <name>] [--url <url>]
                   <nested directory>...
@@ -304,10 +304,13 @@ string entryFor(string parentDirectory, string argument, string branch, string u
     immutable directory = GitRepos.normalizeDirectory(argument);
 
     immutable onDisk = buildPath(parentDirectory, directory[1 .. $ - 1]);
-    immutable notRepository = ParentDirectory.repositoryProblem(directory, onDisk);
-    if (notRepository.length)
+    const repositoryResult = ParentDirectory.checkRepository(directory, onDisk);
+    with (RepositoryOutcome) final switch (repositoryResult.outcome)
     {
-        return notRepository;
+    case repository:
+        break;
+    case missing, notDirectory, notGitRepository, insideRepository:
+        return repositoryResult.message;
     }
 
     immutable origin = originUrl(onDisk);

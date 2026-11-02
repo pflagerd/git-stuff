@@ -12,7 +12,7 @@ import std.stdio : File;
 import gitRepos : GitReposEntry;
 import nestedCommon : branchAfterClone, CommonOptions, currentBranch, ExitStatus,
     loadParent, parseOptions, printFindings, remoteDefaultBranch, remoteHasBranch, runGit;
-import parentDirectory : ParentDirectory;
+import parentDirectory : ParentDirectory, RepositoryOutcome;
 
 enum usage = "Usage: push-nested [-C <directory>] [--fix] [--origin-only] [--parent]
 
@@ -122,10 +122,13 @@ bool pushNestedRepo(string parentDirectory, const GitReposEntry gitReposEntry,
         errors.writeln("push-nested: ", gitReposEntry.directory, ": ", message);
     }
 
-    immutable notRepository = ParentDirectory.repositoryProblem(gitReposEntry.directory, onDisk);
-    if (notRepository.length)
+    const repositoryResult = ParentDirectory.checkRepository(gitReposEntry.directory, onDisk);
+    with (RepositoryOutcome) final switch (repositoryResult.outcome)
     {
-        problem(notRepository ~ "; skipped");
+    case repository:
+        break;
+    case missing, notDirectory, notGitRepository, insideRepository:
+        problem(repositoryResult.message ~ "; skipped");
         return false;
     }
 
@@ -163,11 +166,14 @@ bool pushParentDirectory(string parentDirectory, const PushOptions pushOptions, 
     File errors)
 {
     immutable name = "the parent directory";
-    immutable notRepository = ParentDirectory.repositoryProblem(name, parentDirectory);
-    if (notRepository.length)
+    const repositoryResult = ParentDirectory.checkRepository(name, parentDirectory);
+    with (RepositoryOutcome) final switch (repositoryResult.outcome)
     {
+    case repository:
+        break;
+    case missing, notDirectory, notGitRepository, insideRepository:
         output.flush();
-        errors.writeln("push-nested: ", notRepository, "; --parent skipped");
+        errors.writeln("push-nested: ", repositoryResult.message, "; --parent skipped");
         return false;
     }
     immutable current = currentBranch(parentDirectory);

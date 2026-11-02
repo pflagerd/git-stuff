@@ -7,9 +7,29 @@
  */
 module parentDirectory;
 
+import core.attribute : mustuse;
+
 import finding : Finding;
 import gitIgnore : GitIgnore;
 import gitRepos : GitRepos, GitReposEntry;
+
+/// What ParentDirectory.checkRepository found at a path.
+enum RepositoryOutcome
+{
+    repository,       /// the top level of its own git repository: a nested repo
+    missing,          /// nothing there
+    notDirectory,     /// a file, not a directory
+    notGitRepository, /// a directory git doesn't see as a repository
+    insideRepository, /// a plain directory inside some other repository
+}
+
+/// checkRepository's result: what was found, and a message for her to read.
+/// Design: docs/result-types.md
+@mustuse struct RepositoryResult
+{
+    RepositoryOutcome outcome;
+    string message; /// "" when outcome is repository
+}
 
 class ParentDirectory
 {
@@ -184,10 +204,7 @@ class ParentDirectory
      */
     Finding[] checkDisk() const
     {
-        import std.algorithm.searching : findSplit;
         import std.path : buildPath;
-        import std.process : execute;
-        import std.string : lineSplitter, strip;
 
         Finding[] findings;
         bool[string] seen;
@@ -201,32 +218,19 @@ class ParentDirectory
             seen[gitReposEntry.directory] = true;
 
             immutable onDisk = buildPath(directory, gitReposEntry.directory[1 .. $ - 1]);
-            string problem = repositoryProblem(gitReposEntry.directory, onDisk);
-            if (problem.length == 0)
+            const repositoryResult = checkRepository(gitReposEntry.directory, onDisk);
+            with (RepositoryOutcome) final switch (repositoryResult.outcome)
             {
-                // Lines are "remote.<name>.url <url>"; exit status 1 just
-                // means there are no remotes.
-                const urls = execute(["git", "-C", onDisk, "config",
-                    "--get-regexp", `^remote\..*\.url$`]);
-                bool found = false;
-                foreach (line; urls.output.lineSplitter)
+            case repository:
+                if (!hasRemoteUrl(onDisk, gitReposEntry.url))
                 {
-                    auto nameAndUrl = line.strip.findSplit(" ");
-                    if (nameAndUrl[1].length && nameAndUrl[2] == gitReposEntry.url)
-                    {
-                        found = true;
-                        break;
-                    }
+                    findings ~= Finding(gitReposEntry.directory, onDisk ~ ": no remote of "
+                        ~ gitReposEntry.directory ~ " has url " ~ gitReposEntry.url, false);
                 }
-                if (!found)
-                {
-                    problem = "no remote of " ~ gitReposEntry.directory ~ " has url " ~ gitReposEntry.url;
-                }
-            }
-
-            if (problem.length)
-            {
-                findings ~= Finding(gitReposEntry.directory, onDisk ~ ": " ~ problem, false);
+                break;
+            case missing, notDirectory, notGitRepository, insideRepository:
+                findings ~= Finding(gitReposEntry.directory, onDisk ~ ": " ~ repositoryResult.message, false);
+                break;
             }
         }
 
@@ -234,14 +238,14 @@ class ParentDirectory
     }
 
     /**
-     * Why `onDisk` is not a nested repo, or "" if it is: it must exist, be
+     * Whether `onDisk` is a nested repo, and if not, why: it must exist, be
      * a directory, and be the top level of its own git repository
      * (`git rev-parse --show-toplevel` succeeds and names it, compared after
      * resolving symlinks). `directory` is how messages name it. checkDisk()
-     * and add-nested both use this, so "is this a nested repo?" has one
+     * and the commands all use this, so "is this a nested repo?" has one
      * answer.
      */
-    static string repositoryProblem(string directory, string onDisk)
+    static RepositoryResult checkRepository(string directory, string onDisk)
     {
         import std.file : exists, isDir;
         import std.process : execute;
@@ -249,23 +253,47 @@ class ParentDirectory
 
         if (!onDisk.exists)
         {
-            return directory ~ " does not exist";
+            return RepositoryResult(RepositoryOutcome.missing, directory ~ " does not exist");
         }
         if (!onDisk.isDir)
         {
-            return directory ~ " is not a directory";
+            return RepositoryResult(RepositoryOutcome.notDirectory, directory ~ " is not a directory");
         }
         const top = execute(["git", "-C", onDisk, "rev-parse", "--show-toplevel"]);
         if (top.status != 0)
         {
-            return directory ~ " is not a git repository (" ~ top.output.strip ~ ")";
+            return RepositoryResult(RepositoryOutcome.notGitRepository,
+                directory ~ " is not a git repository (" ~ top.output.strip ~ ")");
         }
         if (resolvePath(top.output.strip) != resolvePath(onDisk))
         {
-            return directory ~ " is inside the repository at " ~ top.output.strip
-                ~ ", not a repository itself";
+            return RepositoryResult(RepositoryOutcome.insideRepository,
+                directory ~ " is inside the repository at " ~ top.output.strip
+                ~ ", not a repository itself");
         }
-        return "";
+        return RepositoryResult(RepositoryOutcome.repository, "");
+    }
+
+    /// Whether any remote of the repository at `onDisk` has `url` as its
+    /// stored url (`remote.<name>.url`, before any insteadOf rewriting).
+    private static bool hasRemoteUrl(string onDisk, string url)
+    {
+        import std.algorithm.searching : findSplit;
+        import std.process : execute;
+        import std.string : lineSplitter, strip;
+
+        // Lines are "remote.<name>.url <url>"; exit status 1 just means
+        // there are no remotes.
+        const urls = execute(["git", "-C", onDisk, "config", "--get-regexp", `^remote\..*\.url$`]);
+        foreach (line; urls.output.lineSplitter)
+        {
+            auto nameAndUrl = line.strip.findSplit(" ");
+            if (nameAndUrl[1].length && nameAndUrl[2] == url)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// `path` with every symlink resolved (POSIX realpath(3)), or `path`
@@ -872,6 +900,40 @@ unittest
     {
         assert(!finding.fixable);
     }
+}
+
+/// checkRepository's five outcomes.
+unittest
+{
+    import std.file : mkdir, write;
+
+    immutable directory = testDirectory("parentDirectory-checkRepository");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    // outside: not in any repository; inside: a repository holding a plain folder.
+    immutable outside = buildPath(directory, "outside");
+    outside.mkdir;
+    buildPath(outside, "file").write("not a directory\n");
+    buildPath(outside, "plain").mkdir;
+    git("init", "-q", buildPath(outside, "alpha"));
+    immutable inside = buildPath(directory, "inside");
+    git("init", "-q", inside);
+    buildPath(inside, "folder").mkdir;
+
+    RepositoryOutcome outcomeOf(string onDisk)
+    {
+        return ParentDirectory.checkRepository("/x/", onDisk).outcome;
+    }
+
+    assert(outcomeOf(buildPath(outside, "alpha")) == RepositoryOutcome.repository);
+    assert(outcomeOf(buildPath(outside, "gone")) == RepositoryOutcome.missing);
+    assert(outcomeOf(buildPath(outside, "file")) == RepositoryOutcome.notDirectory);
+    assert(outcomeOf(buildPath(outside, "plain")) == RepositoryOutcome.notGitRepository);
+    assert(outcomeOf(buildPath(inside, "folder")) == RepositoryOutcome.insideRepository);
+    assert(ParentDirectory.checkRepository("/x/", buildPath(outside, "alpha")).message == "");
 }
 
 /// A plain folder inside a repository is not mistaken for a nested repo.
