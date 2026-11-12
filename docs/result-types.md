@@ -1,6 +1,6 @@
 # Results instead of status strings (decision)
 
-Status: **decided**; conversion in progress (steps 1–3 done). Issue:
+Status: **decided**; conversion in progress (steps 1–4 done). Issue:
 [#20](https://github.com/pflagerd/git-stuff/issues/20).
 
 ## The problem
@@ -10,7 +10,7 @@ one case, `null`) meaning success:
 
 | Function | Where |
 |---|---|
-| `directoryProblem` | `addNested.d` |
+| `directoryProblem` (now `checkDirectoryArgument`) | `addNested.d` |
 | `entryFor` | `addNested.d` (also passes on the others' messages) |
 | `GitRepos.validate` | `gitRepos.d` (returned `null`, not `""`) |
 | `cloneNested` | `nestedCommon.d` |
@@ -83,5 +83,5 @@ One function per commit, each with `make test` passing:
 2. `ParentDirectory.repositoryProblem`, renamed `checkRepository` since it
    now reports success too. Done.
 3. `GitRepos.validate`: `ValidationResult`, no more `null`. Done.
-4. `directoryProblem`
+4. `directoryProblem`, renamed `checkDirectoryArgument`. Done.
 5. `entryFor`, which combines the others.

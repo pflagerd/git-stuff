@@ -6,6 +6,7 @@
  */
 module addNested;
 
+import core.attribute : mustuse;
 import std.stdio : File;
 
 import gitRepos : GitRepos, GitReposEntry, ValidationOutcome;
@@ -190,25 +191,30 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
 
     // The same directory rules as for an existing clone, before downloading.
     immutable directory = GitRepos.normalizeDirectory(argument);
-    string invalid = directoryProblem(argument);
-    if (invalid.length == 0)
+    ExitStatus nothingCloned(string message)
     {
-        auto planned = GitReposEntry(directory, url, branch);
-        const validationResult = GitRepos.validate(planned);
-        with (ValidationOutcome) final switch (validationResult.outcome)
-        {
-        case valid:
-            break;
-        case tooManySlashesInDirectory, emptyDirectory, emptyUrl, tooManySlashesInUrl,
-            tooManySlashesInBranch:
-            invalid = validationResult.message;
-            break;
-        }
-    }
-    if (invalid.length)
-    {
-        errors.writeln("add-nested: ", argument, ": ", invalid, "; nothing was cloned");
+        errors.writeln("add-nested: ", argument, ": ", message, "; nothing was cloned");
         return ExitStatus.findings;
+    }
+
+    const directoryArgumentResult = checkDirectoryArgument(argument);
+    with (DirectoryArgumentOutcome) final switch (directoryArgumentResult.outcome)
+    {
+    case valid:
+        break;
+    case tooManySlashes, notNested, dotComponent:
+        return nothingCloned(directoryArgumentResult.message);
+    }
+
+    auto planned = GitReposEntry(directory, url, branch);
+    const validationResult = GitRepos.validate(planned);
+    with (ValidationOutcome) final switch (validationResult.outcome)
+    {
+    case valid:
+        break;
+    case tooManySlashesInDirectory, emptyDirectory, emptyUrl, tooManySlashesInUrl,
+        tooManySlashesInBranch:
+        return nothingCloned(validationResult.message);
     }
     immutable onDisk = buildPath(commonOptions.directory, directory[1 .. $ - 1]);
     if (onDisk.exists)
@@ -265,30 +271,51 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
     return checkWritten(commonOptions.directory, output, errors);
 }
 
+/// What checkDirectoryArgument found: valid, or the first rule broken.
+enum DirectoryArgumentOutcome
+{
+    valid,          /// names a nested directory
+    tooManySlashes, /// "//" in the argument
+    notNested,      /// nothing left after normalizing, e.g. "/"
+    dotComponent,   /// a "." or ".." component
+}
+
+/// checkDirectoryArgument's result: what was found, and a message for her
+/// to read. Design: docs/result-types.md
+@mustuse struct DirectoryArgumentResult
+{
+    DirectoryArgumentOutcome outcome;
+    string message; /// "" when outcome is valid
+}
+
 /**
  * The rules for a nested directory argument that don't need the disk: no
  * "//" (checked before normalizing, which would strip it), something left
- * after normalizing, and no "." or ".." component. Returns: "" or why not.
+ * after normalizing, and no "." or ".." component.
+ *
+ * Returns: valid, or the first rule broken and a message describing it.
  */
-string directoryProblem(string argument)
+DirectoryArgumentResult checkDirectoryArgument(string argument)
 {
     import std.algorithm.searching : canFind;
     import std.array : split;
 
     if (argument.canFind("//"))
     {
-        return "too many slashes in directory '" ~ argument ~ "'";
+        return DirectoryArgumentResult(DirectoryArgumentOutcome.tooManySlashes,
+            "too many slashes in directory '" ~ argument ~ "'");
     }
     immutable directory = GitRepos.normalizeDirectory(argument);
     if (directory.length == 0)
     {
-        return "not a nested directory";
+        return DirectoryArgumentResult(DirectoryArgumentOutcome.notNested, "not a nested directory");
     }
     if (directory[1 .. $ - 1].split("/").canFind!(component => component == "." || component == ".."))
     {
-        return "'.' and '..' are not allowed; give the directory relative to the parent";
+        return DirectoryArgumentResult(DirectoryArgumentOutcome.dotComponent,
+            "'.' and '..' are not allowed; give the directory relative to the parent");
     }
-    return "";
+    return DirectoryArgumentResult(DirectoryArgumentOutcome.valid, "");
 }
 
 /**
@@ -304,10 +331,13 @@ string entryFor(string parentDirectory, string argument, string branch, string u
 {
     import std.path : buildPath;
 
-    immutable notDirectory = directoryProblem(argument);
-    if (notDirectory.length)
+    const directoryArgumentResult = checkDirectoryArgument(argument);
+    with (DirectoryArgumentOutcome) final switch (directoryArgumentResult.outcome)
     {
-        return notDirectory;
+    case valid:
+        break;
+    case tooManySlashes, notNested, dotComponent:
+        return directoryArgumentResult.message;
     }
     immutable directory = GitRepos.normalizeDirectory(argument);
 
@@ -802,4 +832,20 @@ unittest
     assert(text[1].canFind("at most one nested directory"));
     assert(addNested(scratch, scratch, ["--clone", "x.git", "--url", "y.git"], text) == 2);
     assert(text[1].canFind("--clone and --url"));
+}
+
+/// checkDirectoryArgument's four outcomes.
+unittest
+{
+    with (DirectoryArgumentOutcome)
+    {
+        assert(checkDirectoryArgument("alpha").outcome == valid);
+        assert(checkDirectoryArgument("/tools/alpha/").outcome == valid);
+        assert(checkDirectoryArgument("tools//alpha").outcome == tooManySlashes);
+        assert(checkDirectoryArgument("/").outcome == notNested);
+        assert(checkDirectoryArgument("").outcome == notNested);
+        assert(checkDirectoryArgument("./alpha").outcome == dotComponent);
+        assert(checkDirectoryArgument("tools/../alpha").outcome == dotComponent);
+    }
+    assert(checkDirectoryArgument("alpha").message == "");
 }
