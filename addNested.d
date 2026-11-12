@@ -76,16 +76,16 @@ ExitStatus run(string[] args, File output, File errors)
     bool failed = false;
     foreach (argument; arguments)
     {
-        GitReposEntry gitReposEntry;
-        immutable problem = entryFor(commonOptions.directory, argument, branch, url, gitReposEntry);
-        if (problem.length)
+        const entryResult = entryFor(commonOptions.directory, argument, branch, url);
+        with (EntryOutcome) final switch (entryResult.outcome)
         {
-            errors.writeln("add-nested: ", argument, ": ", problem);
+        case found:
+            gitReposEntries ~= entryResult.gitReposEntry;
+            break;
+        case badDirectoryArgument, notRepository, noOrigin, detachedHead, invalidEntry:
+            errors.writeln("add-nested: ", argument, ": ", entryResult.message);
             failed = true;
-        }
-        else
-        {
-            gitReposEntries ~= gitReposEntry;
+            break;
         }
     }
     if (failed)
@@ -243,14 +243,17 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
 
     // Registered like an existing clone; the url recorded is what git
     // stored, which for her ssh urls is exactly what she typed.
-    GitReposEntry gitReposEntry;
-    immutable problem = entryFor(commonOptions.directory, argument, branch, "", gitReposEntry);
-    if (problem.length)
+    const entryResult = entryFor(commonOptions.directory, argument, branch, "");
+    with (EntryOutcome) final switch (entryResult.outcome)
     {
-        errors.writeln("add-nested: ", argument, ": cloned, but ", problem,
+    case found:
+        break;
+    case badDirectoryArgument, notRepository, noOrigin, detachedHead, invalidEntry:
+        errors.writeln("add-nested: ", argument, ": cloned, but ", entryResult.message,
             "; not registered");
         return ExitStatus.findings;
     }
+    const gitReposEntry = entryResult.gitReposEntry;
     if (commonOptions.fix)
     {
         parentDirectory.fix();
@@ -318,16 +321,36 @@ DirectoryArgumentResult checkDirectoryArgument(string argument)
     return DirectoryArgumentResult(DirectoryArgumentOutcome.valid, "");
 }
 
+/// What entryFor found: the entry, or the stage that stopped it. The
+/// message carries the detail (which rule, git's own words).
+enum EntryOutcome
+{
+    found,                /// the entry is in the result
+    badDirectoryArgument, /// checkDirectoryArgument refused the argument
+    notRepository,        /// ParentDirectory.checkRepository: not a nested repo
+    noOrigin,             /// no origin remote, and no --url given
+    detachedHead,         /// no current branch, and no --branch given
+    invalidEntry,         /// GitRepos.validate refused the entry
+}
+
+/// entryFor's result: what happened, a message for her to read, and the
+/// entry. Design: docs/result-types.md
+@mustuse struct EntryResult
+{
+    EntryOutcome outcome;
+    string message;              /// "" when outcome is found
+    GitReposEntry gitReposEntry; /// meaningful only when outcome is found
+}
+
 /**
  * Works out the .gitrepos entry for `argument`, a nested directory relative
  * to `parentDirectory`. `branch` and `url` are the --branch and --url
  * values ("" when not given).
  * `parentDirectory` is a path, not a ParentDirectory, on purpose.
  *
- * Returns: "" and the entry in `gitReposEntry`, or why there can't be one.
+ * Returns: the entry, or which stage stopped it and why.
  */
-string entryFor(string parentDirectory, string argument, string branch, string url,
-    out GitReposEntry gitReposEntry)
+EntryResult entryFor(string parentDirectory, string argument, string branch, string url)
 {
     import std.path : buildPath;
 
@@ -337,7 +360,7 @@ string entryFor(string parentDirectory, string argument, string branch, string u
     case valid:
         break;
     case tooManySlashes, notNested, dotComponent:
-        return directoryArgumentResult.message;
+        return EntryResult(EntryOutcome.badDirectoryArgument, directoryArgumentResult.message);
     }
     immutable directory = GitRepos.normalizeDirectory(argument);
 
@@ -348,14 +371,14 @@ string entryFor(string parentDirectory, string argument, string branch, string u
     case repository:
         break;
     case missing, notDirectory, notGitRepository, insideRepository:
-        return repositoryResult.message;
+        return EntryResult(EntryOutcome.notRepository, repositoryResult.message);
     }
 
     immutable origin = originUrl(onDisk);
     immutable recordedUrl = url.length ? url : origin;
     if (recordedUrl.length == 0)
     {
-        return "it has no origin remote; give --url";
+        return EntryResult(EntryOutcome.noOrigin, "it has no origin remote; give --url");
     }
 
     immutable current = currentBranch(onDisk);
@@ -364,7 +387,8 @@ string entryFor(string parentDirectory, string argument, string branch, string u
     {
         if (current.length == 0)
         {
-            return "it has no current branch (detached HEAD); give --branch";
+            return EntryResult(EntryOutcome.detachedHead,
+                "it has no current branch (detached HEAD); give --branch");
         }
         // origin/HEAD only describes origin, so it is unknown for another url.
         immutable remoteDefault = recordedUrl == origin ? remoteDefaultBranch(onDisk) : "";
@@ -373,15 +397,15 @@ string entryFor(string parentDirectory, string argument, string branch, string u
         recordedBranch = omit ? "" : current;
     }
 
-    gitReposEntry = GitReposEntry(directory, recordedUrl, recordedBranch);
+    auto gitReposEntry = GitReposEntry(directory, recordedUrl, recordedBranch);
     const validationResult = GitRepos.validate(gitReposEntry);
     with (ValidationOutcome) final switch (validationResult.outcome)
     {
     case valid:
-        return "";
+        return EntryResult(EntryOutcome.found, "", gitReposEntry);
     case tooManySlashesInDirectory, emptyDirectory, emptyUrl, tooManySlashesInUrl,
         tooManySlashesInBranch:
-        return validationResult.message;
+        return EntryResult(EntryOutcome.invalidEntry, validationResult.message);
     }
 }
 
@@ -848,4 +872,38 @@ unittest
         assert(checkDirectoryArgument("tools/../alpha").outcome == dotComponent);
     }
     assert(checkDirectoryArgument("alpha").message == "");
+}
+
+/// entryFor's six outcomes; only `found` carries an entry.
+unittest
+{
+    immutable scratch = testDirectory("addNested-entryFor");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(scratch, "alpha", "main");
+    immutable parent = buildPath(scratch, "parent");
+    git("clone", "-q", remote, buildPath(parent, "alpha"));
+    git("init", "-q", "-b", "main", buildPath(parent, "lonely")); // no remote
+    git("clone", "-q", remote, buildPath(parent, "detached"));
+    git("-C", buildPath(parent, "detached"), "checkout", "-q", "--detach");
+
+    with (EntryOutcome)
+    {
+        const entryResult = entryFor(parent, "alpha", "", "");
+        assert(entryResult.outcome == found && entryResult.message == "");
+        assert(entryResult.gitReposEntry == GitReposEntry("/alpha/", remote, ""));
+
+        assert(entryFor(parent, "tools//alpha", "", "").outcome == badDirectoryArgument);
+        assert(entryFor(parent, "missing", "", "").outcome == notRepository);
+        assert(entryFor(parent, "lonely", "", "").outcome == noOrigin);
+        assert(entryFor(parent, "detached", "", "").outcome == detachedHead);
+        assert(entryFor(parent, "alpha", "feature//x", "").outcome == invalidEntry);
+
+        // --url and --branch supply what the repository lacks.
+        assert(entryFor(parent, "lonely", "", "l.git").outcome == found);
+        assert(entryFor(parent, "detached", "main", "").outcome == found);
+    }
 }

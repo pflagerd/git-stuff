@@ -1,6 +1,6 @@
 # Results instead of status strings (decision)
 
-Status: **decided**; conversion in progress (steps 1–4 done). Issue:
+Status: **implemented** (all five functions converted). Issue:
 [#20](https://github.com/pflagerd/git-stuff/issues/20).
 
 ## The problem
@@ -11,7 +11,7 @@ one case, `null`) meaning success:
 | Function | Where |
 |---|---|
 | `directoryProblem` (now `checkDirectoryArgument`) | `addNested.d` |
-| `entryFor` | `addNested.d` (also passes on the others' messages) |
+| `entryFor` | `addNested.d` (also passed on the others' messages) |
 | `GitRepos.validate` | `gitRepos.d` (returned `null`, not `""`) |
 | `cloneNested` | `nestedCommon.d` |
 | `ParentDirectory.repositoryProblem` (now `checkRepository`) | `parentDirectory.d` |
@@ -84,4 +84,17 @@ One function per commit, each with `make test` passing:
    now reports success too. Done.
 3. `GitRepos.validate`: `ValidationResult`, no more `null`. Done.
 4. `directoryProblem`, renamed `checkDirectoryArgument`. Done.
-5. `entryFor`, which combines the others.
+5. `entryFor`, which combines the others. Done: `EntryOutcome` has one
+   member per *stage* that can stop it (`badDirectoryArgument`,
+   `notRepository`, `noOrigin`, `detachedHead`, `invalidEntry`), not one
+   per reason its helpers report; the message carries the detail, and a
+   caller that needs the reason can call the helper. The entry is in
+   `EntryResult`, replacing the `out` parameter.
+
+## What is left
+
+No function returns a status string now. The `null` checks that remain are
+"no value", not a status: the optional `toPath` of the `write()` methods and
+a lookup in `unescapeField` (both part of
+[#21](https://github.com/pflagerd/git-stuff/issues/21)), and the C pointer
+`realpath` returns in `ParentDirectory.resolvePath`.
