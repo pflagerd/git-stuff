@@ -1,6 +1,0 @@
-#!/bin/bash
-if [ $# == 0 ]; then
-    git commit -a -m"progress"
-else
-    git commit -a -m"$*"
-fi
