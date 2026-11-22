@@ -88,8 +88,10 @@ Example:
 
 Each nested directory is also listed in the parent's `.gitignore`, so the
 parent repository doesn't track the nested repo's files. The tools keep those
-entries in one managed block and never change anything outside it, so your own
-lines, comments and their order are left alone:
+entries in one managed block and change nothing outside it, except that
+`--fix` (on any of the commands) moves a line naming a nested repo (such as
+`beta/`) into the block. Your other lines, comments and their order are left
+alone:
 
 ```
 *.o
