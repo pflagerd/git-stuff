@@ -2,8 +2,8 @@
 
 Status: **all decisions made** (see Answers). **Step 1, the default
 mode (direct subdirectories, not fixable), is implemented** in
-`ParentDirectory.checkDisk()` item 6. Still to do: `-r`/`--recursive`,
-`-f`/`--force`, and `--fix` registering unlisted repos. Issue:
+`ParentDirectory.checkDisk()` item 6. The remaining steps, in order, are
+the checklist in issue
 [#15](https://github.com/pflagerd/git-stuff/issues/15). Builds on
 `docs/nested-repos-design.md` (`ParentDirectory.checkDisk()`) and follows the
 conventions of `docs/nested-commands-proposal.md`.
