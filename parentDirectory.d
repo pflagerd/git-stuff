@@ -35,13 +35,23 @@ enum RepositoryOutcome
     string message; /// "" when outcome is repository
 }
 
-/// A nested repo in the parent that .gitrepos doesn't list (checkDisk()
-/// item 6), and the entry `add-nested <dir>` would record for it.
+/**
+ * A nested repo that its nearest enclosing parent's .gitrepos doesn't list
+ * (checkDisk() item 6). That parent is the nearest directory above it that
+ * is a git repository or has a .gitrepos; the -C directory always counts.
+ * Without -r it is always the -C directory.
+ */
 private struct UnlistedRepository
 {
-    string directory;        /// "/alpha/" form
+    string directory;        /// "/tools/alpha/" form, relative to the -C directory
     string onDisk;           /// its path, for messages
-    EntryResult entryResult; /// found: registerUnlisted() can register it; otherwise why not
+    bool parentIsTop;        /// whether its nearest enclosing parent is the -C directory
+    string parentOnDisk;     /// that parent's path
+    string relativeToParent; /// "/alpha/" form, relative to that parent: what its .gitrepos would list
+    /// Only when parentIsTop: what `add-nested <dir>` would record (found:
+    /// registerUnlisted() can register it), or why not. Otherwise it is
+    /// left at its .init, which reads as found, so check parentIsTop first.
+    EntryResult entryResult;
 }
 
 class ParentDirectory
@@ -274,13 +284,25 @@ class ParentDirectory
      */
     private Finding[] unlistedFindings(const bool[string] listed) const
     {
+        import std.algorithm.searching : canFind;
+        import std.path : buildPath;
+
         Finding[] findings;
         foreach (unlistedRepository; unlistedRepositories(listed, findings))
         {
-            // the name add-nested takes, relative to the parent: "/alpha/" -> "alpha"
-            immutable name = unlistedRepository.directory[1 .. $ - 1];
-            immutable notListed = unlistedRepository.onDisk ~ ": " ~ unlistedRepository.directory
-                ~ " is a git repository but is not listed in " ~ _gitRepos.path;
+            // the name add-nested takes, relative to the parent: "/tools/alpha/" -> "tools/alpha"
+            immutable name = unlistedRepository.relativeToParent[1 .. $ - 1];
+            immutable notListed = unlistedRepository.onDisk ~ ": " ~ unlistedRepository.relativeToParent
+                ~ " is a git repository but is not listed in "
+                ~ buildPath(unlistedRepository.parentOnDisk, ".gitrepos");
+            if (!unlistedRepository.parentIsTop)
+            {
+                // Its own parent's business (proposal, answer 3b). Below a
+                // direct child of that parent only -r finds it, so say -r.
+                findings ~= Finding(unlistedRepository.directory, notListed ~ "; run check-nested -C "
+                    ~ unlistedRepository.parentOnDisk ~ (name.canFind('/') ? " -r" : "") ~ " --fix", false);
+                continue;
+            }
             const entryResult = unlistedRepository.entryResult;
             with (EntryOutcome) final switch (entryResult.outcome)
             {
@@ -329,6 +351,10 @@ class ParentDirectory
         GitReposEntry[] gitReposEntries;
         foreach (unlistedRepository; unlistedRepositories(listed, listingFindings))
         {
+            if (!unlistedRepository.parentIsTop)
+            {
+                continue; // its own parent's business: one run never writes another's files
+            }
             with (EntryOutcome) final switch (unlistedRepository.entryResult.outcome)
             {
             case found:
@@ -424,8 +450,8 @@ class ParentDirectory
             {
             case repository:
                 // No --branch or --url: what `add-nested <name>` would record.
-                unlistedRepositories ~= UnlistedRepository(nestedDirectory, onDisk,
-                    entryFor(directory, nestedDirectory, "", ""));
+                unlistedRepositories ~= UnlistedRepository(nestedDirectory, onDisk, true,
+                    directory, nestedDirectory, entryFor(directory, nestedDirectory, "", ""));
                 break;
             case missing, notDirectory, notGitRepository, insideRepository:
                 break; // not a nested repo, so nothing to register
