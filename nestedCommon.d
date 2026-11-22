@@ -30,6 +30,46 @@ struct CommonOptions
 {
     string directory = "."; /// -C: the parent directory to work in
     bool fix;               /// --fix: repair fixable findings first
+    bool noCheck;           /// --no-check: skip the checks and their report (#29)
+}
+
+/**
+ * The check options set in `commonOptions`, as she would type them. These
+ * only change what the checks do, so --no-check leaves them nothing to do
+ * (#29, decision 12). A new common check option, such as -f/--force
+ * (#15 step 4), gets a line here and is then refused with --no-check by
+ * every command.
+ */
+string[] checkOptionsGiven(const CommonOptions commonOptions) @safe pure nothrow
+{
+    string[] given;
+    if (commonOptions.fix)
+    {
+        given ~= "--fix";
+    }
+    return given;
+}
+
+/**
+ * The usage error for --no-check together with check options (#29,
+ * decision 12): prints one line to `errors` naming them, prefixed with
+ * `program`. Does nothing when `checkOptions` is empty.
+ *
+ * Returns: true if it printed the error, so the caller exits with
+ * ExitStatus.usage.
+ */
+bool reportNoCheckConflict(string program, const string[] checkOptions, File errors)
+{
+    import std.array : join;
+
+    if (checkOptions.length == 0)
+    {
+        return false;
+    }
+    errors.writeln(program, ": --no-check can't be used with ", checkOptions.join(", "),
+        ": with the checks off, there is nothing for ", checkOptions.length == 1 ? "it" : "them",
+        " to do");
+    return true;
 }
 
 /// What parseOptions decided.
@@ -43,7 +83,8 @@ struct Parsed
      * - ExitStatus.ok (0): -h or --help was given, and the usage has been
      *   printed to the output;
      * - ExitStatus.usage (2): an unknown or malformed option (e.g. a
-     *   missing value), and a message has been printed to the errors.
+     *   missing value), or --no-check with a check option such as --fix,
+     *   and a message has been printed to the errors.
      *
      * It is never ExitStatus.findings (1). When `proceed` is true it is
      * left at ExitStatus.ok and callers ignore it. Being an ExitStatus, not
@@ -54,14 +95,16 @@ struct Parsed
 }
 
 /**
- * Parses -C, --fix and -h/--help, plus any options of one command passed as
+ * Parses -C, --fix, --no-check and -h/--help, plus any options of one command passed as
  * `extra` (in std.getopt's form: name, help text, pointer, ...). What is
  * left in `args` afterwards is the program name followed by the positional
  * arguments.
  *
  * -h/--help prints `usage` and the option list to `output` (exit 0). An
- * unknown or malformed option prints a message to `errors` (exit 2).
- * Options are case-sensitive, so -C is not -c.
+ * unknown or malformed option prints a message to `errors` (exit 2), and so
+ * does --no-check with a common check option (reportNoCheckConflict). A
+ * command's own check options, such as check-nested's -r, are its own to
+ * refuse. Options are case-sensitive, so -C is not -c.
  */
 Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions commonOptions,
     File output, File errors, string usage, Extra extra)
@@ -74,6 +117,8 @@ Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions commonOptions
         auto result = getopt(args, config.caseSensitive,
             "C", "Work in <directory> instead of the current directory.", &commonOptions.directory,
             "fix", "Repair fixable findings in .gitignore and .gitrepos first.", &commonOptions.fix,
+            "no-check", "Don't check .gitignore, .gitrepos and the nested repos, or report problems.",
+                &commonOptions.noCheck,
             extra);
         if (result.helpWanted)
         {
@@ -89,6 +134,11 @@ Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions commonOptions
     catch (ConvException exception) // e.g. a value of the wrong type
     {
         errors.writeln(args.length ? args[0] : "nested", ": ", exception.msg);
+        return Parsed(false, ExitStatus.usage);
+    }
+    if (commonOptions.noCheck
+        && reportNoCheckConflict(args.length ? args[0] : "nested", checkOptionsGiven(commonOptions), errors))
+    {
         return Parsed(false, ExitStatus.usage);
     }
     return Parsed(true, ExitStatus.ok);
@@ -616,6 +666,79 @@ unittest
         });
         assert(text[0] == "" && text[1].canFind("check-nested: "), bad[1]);
     }
+}
+
+/// --no-check alone is parsed into CommonOptions.noCheck (#29); it is off
+/// by default.
+unittest
+{
+    immutable directory = testDirectory("nestedCommon-no-check");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    auto text = captured(directory, (File output, File errors) {
+        string[] args = ["pull-nested", "-C", "/tmp/p"];
+        CommonOptions commonOptions;
+        assert(parseOptions(args, commonOptions, output, errors, "usage").proceed);
+        assert(!commonOptions.noCheck);
+
+        args = ["remove-nested", "--no-check", "alpha"];
+        commonOptions = CommonOptions.init;
+        assert(parseOptions(args, commonOptions, output, errors, "usage").proceed);
+        assert(commonOptions.noCheck && !commonOptions.fix);
+        assert(args == ["remove-nested", "alpha"]);
+    });
+    assert(text[0] == "" && text[1] == "");
+}
+
+/// --no-check with --fix is a usage error (2) in any order, and the message
+/// names both (#29 decision 12).
+unittest
+{
+    immutable directory = testDirectory("nestedCommon-no-check-fix");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    foreach (given; [["--no-check", "--fix"], ["--fix", "--no-check"]])
+    {
+        auto text = captured(directory, (File output, File errors) {
+            string[] args = ["push-nested"] ~ given;
+            CommonOptions commonOptions;
+            const parsed = parseOptions(args, commonOptions, output, errors, "usage");
+            assert(!parsed.proceed && parsed.exitStatus == ExitStatus.usage, given[0]);
+        });
+        assert(text[0] == "", given[0]);
+        assert(text[1] == "push-nested: --no-check can't be used with --fix: with the checks off,"
+            ~ " there is nothing for it to do\n", text[1]);
+    }
+}
+
+/// checkOptionsGiven lists the common check options set, and
+/// reportNoCheckConflict names them all, or prints nothing for none.
+unittest
+{
+    immutable directory = testDirectory("nestedCommon-no-check-conflict");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    assert(checkOptionsGiven(CommonOptions.init) == []);
+    CommonOptions commonOptions;
+    commonOptions.fix = true;
+    assert(checkOptionsGiven(commonOptions) == ["--fix"]);
+
+    auto text = captured(directory, (File output, File errors) {
+        assert(!reportNoCheckConflict("add-nested", [], errors));
+        assert(reportNoCheckConflict("add-nested", ["--fix", "-f/--force"], errors));
+    });
+    assert(text[0] == "");
+    assert(text[1] == "add-nested: --no-check can't be used with --fix, -f/--force: with the checks"
+        ~ " off, there is nothing for them to do\n", text[1]);
 }
 
 /// Parsed.exitStatus is an ExitStatus: a bare number can't be stored in it,

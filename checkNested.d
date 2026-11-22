@@ -15,7 +15,8 @@ module checkNested;
 
 import std.stdio : File;
 
-import nestedCommon : CommonOptions, ExitStatus, loadParent, parseOptions, printFindings;
+import nestedCommon : CommonOptions, ExitStatus, loadParent, parseOptions, printFindings,
+    reportNoCheckConflict;
 import parentDirectory : ParentDirectory;
 
 enum usage = "Usage: check-nested [-C <directory>] [-r] [--fix]
@@ -28,8 +29,9 @@ remote and a current branch. With -r, looks below the direct
 subdirectories too, except in directories whose name starts with . or
 that a .gitignore line names; a repository found there belongs to the
 nearest directory above it that is a git repository or has a .gitrepos,
-and --fix registers it only when that is this directory. Exit status:
-0 no problems, 1 problems remain, 2 bad usage or a file that can't be read.
+and --fix registers it only when that is this directory. --no-check is
+refused, since checking is all check-nested does. Exit status: 0 no
+problems, 1 problems remain, 2 bad usage or a file that can't be read.
 ";
 
 /**
@@ -52,6 +54,15 @@ ExitStatus run(string[] args, File output, File errors)
     if (!parsed.proceed)
     {
         return parsed.exitStatus;
+    }
+    // #29 decision 12: with the checks off, check-nested has nothing left
+    // to do. parseOptions has already refused --no-check --fix; -r is
+    // check-nested's own option, so it is named here.
+    if (commonOptions.noCheck)
+    {
+        reportNoCheckConflict("check-nested", recursive ? ["-r/--recursive"] : [], errors);
+        errors.writeln("check-nested: --no-check leaves nothing to do: checking is all check-nested does");
+        return ExitStatus.usage;
     }
     if (args.length > 1)
     {
@@ -379,4 +390,42 @@ unittest
     assert(checkNested(scratch, scratch, ["extra"], text) == 2);
     assert(text[1].canFind("unexpected argument 'extra'"));
     assert(checkNested(scratch, scratch, ["--nonsense"], text) == 2);
+}
+
+/// --no-check leaves check-nested nothing to do: exit 2, whatever it is
+/// combined with, and the message names the conflicting options (#29
+/// decision 12). Nothing is checked or written, even with findings.
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable scratch = testDirectory("checkNested-no-check");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = buildPath(scratch, "parent");
+    parent.mkdirRecurse;
+    immutable unsorted = "/beta/ b.git\n/alpha/ a.git\n";
+    buildPath(parent, ".gitrepos").write(unsorted);
+
+    immutable nothingToDo = "check-nested: --no-check leaves nothing to do: checking is all"
+        ~ " check-nested does\n";
+    string[2] text;
+    assert(checkNested(scratch, parent, ["--no-check"], text) == 2);
+    assert(text[0] == "" && text[1] == nothingToDo, text[1]);
+
+    foreach (recursive; ["-r", "--recursive"])
+    {
+        assert(checkNested(scratch, parent, ["--no-check", recursive], text) == 2, recursive);
+        assert(text[1] == "check-nested: --no-check can't be used with -r/--recursive: with the"
+            ~ " checks off, there is nothing for it to do\n" ~ nothingToDo, text[1]);
+    }
+
+    assert(checkNested(scratch, parent, ["--fix", "--no-check"], text) == 2);
+    assert(text[1].canFind("--no-check can't be used with --fix"), text[1]);
+    assert(!text[1].canFind("warning:"));
+    assert(buildPath(parent, ".gitrepos").readText == unsorted); // untouched
+    assert(!buildPath(parent, ".gitignore").exists);
 }
