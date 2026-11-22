@@ -7,7 +7,8 @@ Status: **implemented** in `gitIgnore.d`, `gitRepos.d` and
 This document records the design for reading, checking and writing the two
 files that describe a parent directory's nested repositories: `.gitignore`
 and `.gitrepos`. It replaces the `.gitignore.serialize()` /
-`.gitignore.deserialize()` sketch in `TODO`.
+`.gitignore.deserialize()` sketch in `TODO` (a file since retired in favour
+of GitHub issues; see `git log -- TODO`).
 
 It will fix [#8](https://github.com/pflagerd/git-stuff/issues/8) (add-nested
 breaks relative paths), [#5](https://github.com/pflagerd/git-stuff/issues/5)

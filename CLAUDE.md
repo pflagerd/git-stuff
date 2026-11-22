@@ -74,10 +74,16 @@ Teaching them what you're doing comes first. Speed comes second.
   that assumed fetch leaves none; the test now deletes it with
   `git remote set-head origin --delete`.
 
-### Project facts: `README.md` and `TODO`
+### Project facts: `README.md` and the current issue
 - `README.md` states the project's goal: nested git repositories that are
-  cloned, checked out, pulled and pushed along with their parent. `TODO`
-  holds the planned work. Read both at the start of a session.
+  cloned, checked out, pulled and pushed along with their parent.
+- Planned work lives in GitHub issues, not in a file (`TODO` was retired).
+  Exactly one open issue carries the `current` label; find it with
+  `gh issue list --repo pflagerd/git-stuff --label current`. Its body holds
+  the tasks and steps of the work in hand, as a checklist: tick steps as
+  they're done and add new ones there. When the work moves to another
+  issue, move the label. Write other loose ends as issues of their own.
+- Read `README.md` and the current issue at the start of a session.
 - The repo's code:
   - D programs (`*.d`) built with `make` (LDC's `ldmd2` by default, via
     the `DC` variable) into `bin/add-nested`, `bin/pull-nested`,
@@ -97,9 +103,9 @@ Teaching them what you're doing comes first. Speed comes second.
 
 ### Continuity between machines
 - Work happens in both Claude Code cloud sessions and on a local
-  Kubuntu machine. Write plans and decisions to `docs/` in the repo
-  (create it when first needed), not only in chat, so the other
-  environment can pick them up.
+  Kubuntu machine. Write designs and decisions to `docs/` in the repo,
+  and tasks and steps to the current issue, not only in chat, so the
+  other environment can pick them up.
 - Work directly on `master`: commit and push there, and don't create
   feature branches unless the owner asks for one. (A cloud session may be
   started with a branch name of its own; work on `master` anyway.)

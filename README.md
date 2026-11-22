@@ -346,11 +346,22 @@ the one-line `main()` the in-process tests leave out.
 
 ## Planned work
 
-Tracked as GitHub issues:
+Tracked as GitHub issues. The one being worked on carries the label
+[`current`](https://github.com/pflagerd/git-stuff/labels/current), and its
+description holds the steps as a checklist.
 
 - [#15](https://github.com/pflagerd/git-stuff/issues/15) Make `check-nested`
   report git repositories in the parent directory that `.gitrepos` doesn't
-  list (proposal in `docs/unlisted-repos-proposal.md`).
+  list (proposal in `docs/unlisted-repos-proposal.md`). The current issue.
+- [#25](https://github.com/pflagerd/git-stuff/issues/25) Bug:
+  `checkRepository()` crashes on a `.gitrepos` entry that is a dangling
+  symbolic link.
+- [#22](https://github.com/pflagerd/git-stuff/issues/22) Let `check-nested
+  --fix` apply some fixes, not all.
+- [#23](https://github.com/pflagerd/git-stuff/issues/23) Number the findings
+  `check-nested` lists.
+- [#24](https://github.com/pflagerd/git-stuff/issues/24) Compare the old
+  `add_nested.d.todo` and `pull_nested.d.todo` notes with the unit tests.
 - [#7](https://github.com/pflagerd/git-stuff/issues/7) Check that the
   directories named by `.gitignore` lines outside the managed block still
   exist.
