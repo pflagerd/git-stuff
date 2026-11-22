@@ -117,9 +117,9 @@ make setup
 ```
 
 This runs `./setup.sh`, which installs whichever of these Ubuntu packages are
-missing: `ldc` (the D compiler), `make`, `git` and `python3` (for the
-remaining Python scripts, until
-[#18](https://github.com/pflagerd/git-stuff/issues/18)). It uses `apt-get`
+missing: `ldc` (the D compiler), `make`, `git` and `python3` (left over
+from the Python scripts, which are gone;
+[#18](https://github.com/pflagerd/git-stuff/issues/18) removes it). It uses `apt-get`
 (via `sudo` unless run as root), and apt asks before installing anything. It
 can be run again at any time; it installs only what's missing. On a machine
 without `make`, you run `./setup.sh` directly.
@@ -230,8 +230,8 @@ ssh can still ask for a passphrase.
 ### `push-nested [--origin-only] [--parent]`
 
 For each nested repo in `.gitrepos`, under a `== /alpha/` header, pushes the
-current branch (`git push <remote> <branch>`) to **every remote** it has, as
-`bin/push` does; `--origin-only` pushes only to the remote named `origin`.
+current branch (`git push <remote> <branch>`) to **every remote** it has;
+`--origin-only` pushes only to the remote named `origin`.
 It never forces: if a remote has commits you don't, the push is refused
 and reported, and you pull first.
 
@@ -290,64 +290,11 @@ variables view uses it only if the front end turns on pretty-printing,
 
 This is the one Python file meant to stay: GDB can only be extended in Python.
 
-## Bash helpers in `bin/`
+## `bin/ls-repos`
 
-These are short wrappers around git. Some call each other (for example,
-`add-commit-push` calls `commit-and-push`, which calls `push`), so `bin/`
-needs to be on your `PATH`.
-
-| Script | What it does |
-|---|---|
-| `add [args]` | `git add [args]` |
-| `commit [message]` | `git commit -a` with the message, or `progress` if none is given |
-| `commit-and-push [message]` | `commit`, then `push` |
-| `add-commit-push [message]` | `git add .`, then `commit-and-push` |
-| `push` | `git push` to **every** remote that has a push URL |
-| `pull [args]` | `git pull [args]` |
-| `fetch [args]` | `git fetch [args]` |
-| `remotes` | `git remote -v` |
-| `rev` | Prints the current commit (`git rev-parse HEAD`) |
-| `ls-repos` | Lists every nested git repo below the current directory with its `origin` URL |
-
-`bin/add-repo-to-desktop`, `bin/pull-desktop-repos` and `bin/template` are
-compiled x86-64 programs (built with `dmd`) whose source is not in this
-repository.
-
-## Python scripts
-
-These are being replaced by D or deleted; each links to the issue that
-decides its fate. All need Python 3 and git, and use only the standard
-library.
-
-These take paths as arguments (defaulting to `.`) and accept `-v` for verbose
-output. Each exits 0 if any path matched and 1 otherwise
-([#17](https://github.com/pflagerd/git-stuff/issues/17) for all three):
-
-- **`is_pflager_net_in_git_origin.py [paths]`** prints the paths whose
-  `origin` host ends in `.pflager.net`.
-- **`is_zax_pflager_net_git_origin.py [paths]`** prints the paths whose
-  `origin` is `zax` or `zax.pflager.net`.
-- **`add_origin_host_remote.py [paths]`** adds a second remote, named after
-  the `origin` host, wherever one doesn't already exist.
-
-The rest read `../.gitrepos` or `../.gitignore`, so they expect to be run from
-a directory one level below the parent directory:
-
-- **`look_for_missing_remotes.py`** prints each `.gitrepos` entry whose remote
-  can't be reached (`git ls-remote` fails).
-  [#14](https://github.com/pflagerd/git-stuff/issues/14)
-- **`find_desktop_directories_not_in_%2Egitrepos.py`** prints the directories
-  in `..` that `.gitrepos` doesn't list.
-  [#15](https://github.com/pflagerd/git-stuff/issues/15)
-- **`find_directories_in_%2Egitignore_not_on_disk.py`** prints the
-  `.gitignore` entries that have no matching directory in `..`.
-  [#16](https://github.com/pflagerd/git-stuff/issues/16)
-- **`find_and_remove_desktop_directories_not_in_%2Egitrepos.py`** offers to
-  delete (with a y/N prompt for each) the directories in `..` that aren't
-  listed in `.gitrepos`. **Read the known issues before running it.**
-  [#11](https://github.com/pflagerd/git-stuff/issues/11)
-
-`%2E` in the file names is the URL encoding of `.`.
+A bash script, not built by `make`: it lists every git repository below the
+current directory (following symbolic links), each with its `origin` url,
+sorted by path.
 
 ## Source files
 
@@ -389,29 +336,10 @@ Tracked as GitHub issues:
 - [#7](https://github.com/pflagerd/git-stuff/issues/7) Check that the
   directories named by `.gitignore` lines outside the managed block still
   exist.
-- [#1](https://github.com/pflagerd/git-stuff/issues/1) Let `add-commit-push`
-  and `commit-and-push` take `-m` to override the default `progress` message.
 - [#4](https://github.com/pflagerd/git-stuff/issues/4) A utility to create
   remote repositories (one or several) on the owner's servers, instead of by
   hand over ssh.
-- Replace the Python scripts with D, or delete them:
-  [#14](https://github.com/pflagerd/git-stuff/issues/14),
-  [#15](https://github.com/pflagerd/git-stuff/issues/15),
-  [#16](https://github.com/pflagerd/git-stuff/issues/16),
-  [#17](https://github.com/pflagerd/git-stuff/issues/17) and
-  [#11](https://github.com/pflagerd/git-stuff/issues/11); then
-  [#18](https://github.com/pflagerd/git-stuff/issues/18) removes `python3`
-  from `setup.sh`.
-
-Bugs are listed under [Known issues](#known-issues).
-
-## Known issues
-
-- **`find_and_remove_desktop_directories_not_in_%2Egitrepos.py` doesn't
-  really check `.gitrepos`.** It saves only the first character of each line
-  and compares those against `Path` objects, so no directory ever counts as
-  listed. Apart from the y/N prompt, the only safeguard against deleting a
-  directory that *is* listed is the separate git work-tree and
-  `git check-ignore` test in `git_ignored()`, and what that test decides
-  depends on the directory you run it from.
-  ([#11](https://github.com/pflagerd/git-stuff/issues/11))
+- [#21](https://github.com/pflagerd/git-stuff/issues/21) Return `Nullable`
+  instead of `""` from functions that may have no value to give.
+- [#18](https://github.com/pflagerd/git-stuff/issues/18) Remove `python3`
+  from `setup.sh`, now that the Python scripts are gone.
