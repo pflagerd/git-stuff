@@ -168,7 +168,7 @@ make DC=dmd
 | Option | Meaning |
 |---|---|
 | `-C <directory>` | Work in that parent directory instead of the current one (like `git -C`). |
-| `--fix` | First repair what can be repaired in `.gitignore` and `.gitrepos` (sort, de-duplicate, move nested-repo lines into the managed block, add missing block entries), and write both files. |
+| `--fix` | First repair what can be repaired in `.gitignore` and `.gitrepos` (sort, de-duplicate, move nested-repo lines into the managed block, add missing block entries), and write both files. `check-nested --fix` also registers git repositories that `.gitrepos` doesn't list yet (see [below](#check-nested--r--f)). |
 | `--no-check` | Don't check the two files or report their problems; the command only does its own job. It can't be combined with `--fix`, and `check-nested` refuses it, since checking is all it does: both are bad usage (exit status 2). |
 | `-h`, `--help` | Print usage. |
 
@@ -263,11 +263,12 @@ and reported, and you pull first.
 
 Design: `docs/push-nested-proposal.md`.
 
-### `check-nested`
+### `check-nested [-r [-f]]`
 
-Reports problems with `.gitignore` and `.gitrepos`, and with the nested
+Reports problems with `.gitignore` and `.gitrepos`, with the nested
 repos they list on disk (missing, not a repository, no remote with the
-listed url). It never uses the network, and prints nothing when there's
+listed url), and with git repositories that `.gitrepos` doesn't list
+(below). It never uses the network, and prints nothing when there's
 nothing to report. With `--fix` it repairs what it can, writes both files,
 and prints `fixed N problem(s)`. `--no-check` is bad usage here (exit
 status 2), since checking is all `check-nested` does. The message names
@@ -283,7 +284,9 @@ each one, counting them in `fixed N problem(s)`:
 - **Not reported:** a directory that any `.gitignore` line names, inside the
   managed block or outside it, in any slash form (`household`,
   `/household/`). Writing such a line by hand is how you keep a repository
-  there on purpose. Lines with wildcards (`*`, `?`, `[`) don't count.
+  there on purpose. Lines with wildcards (`*`, `?`, `[`) don't count, and
+  a line names a directory beside its own `.gitignore` only: unlike git,
+  `household` doesn't also match a `household` folder further down.
 - **Also not reported:** names starting with `.`, and anything that isn't a
   directory. A symbolic link to a repository is reported.
 - **Only direct subdirectories** are looked at, unless you give `-r`.
@@ -301,8 +304,15 @@ each one, counting them in `fixed N problem(s)`:
   the `-C` directory. Otherwise the warning says to run `check-nested -C
   <that directory> --fix` (with `-r` when it's deeper than a direct
   subdirectory there), so one run never writes into another repository's
-  files. A directory it can't list, or a nested `.gitrepos` it can't read,
-  is a warning, and the walk goes on.
+  files. A directory it can't list, or a nested `.gitrepos` or
+  `.gitignore` it can't read, is a warning, and the walk goes on. Nothing
+  is reported against a `.gitrepos` it couldn't read, and the directories
+  an unreadable `.gitignore` would name are walked into.
+- **How `-r` stays fast:** it asks git about every direct subdirectory, as
+  without `-r`, but below that only about directories that have a `.git`
+  entry (a directory, or a file as in a linked worktree). So a deeper
+  repository with no `.git` entry at all (one set up with `GIT_DIR` or
+  `core.worktree`) isn't found.
 - **`-f` / `--force`, with `-r`,** also walks into the directories that a
   `.gitignore` line names, listed repositories included. Such a directory
   is still not reported itself, but the repositories inside it are, by the
@@ -310,8 +320,8 @@ each one, counting them in `fixed N problem(s)`:
   repository you put inside `/household/`, and one inside a listed
   repository that its `.gitrepos` doesn't list. When the walk had to go
   through a named directory to reach it, the warning's suggested command
-  says `-r -f` too. Without `-r`, `-f` has no effect, and you get a
-  warning saying so.
+  says `-r -f` too. Without `-r`, `-f` has no effect: you get a warning
+  saying so, and the exit status is what it would be without `-f`.
 - **`--fix` can't register** a repository with no `origin` remote, or one
   on a detached HEAD. The warning stays, and says to use `add-nested --url`
   or `add-nested --branch`. Registering doesn't use the network either, so
@@ -394,9 +404,9 @@ Tracked as GitHub issues. The one being worked on carries the label
 [`current`](https://github.com/pflagerd/git-stuff/labels/current), and its
 description holds the steps as a checklist.
 
-- [#15](https://github.com/pflagerd/git-stuff/issues/15) Make `check-nested`
-  report git repositories in the parent directory that `.gitrepos` doesn't
-  list (proposal in `docs/unlisted-repos-proposal.md`). The current issue.
+- [#29](https://github.com/pflagerd/git-stuff/issues/29) Run
+  `check-nested`'s checks, and accept its options, in every nested
+  command.
 - [#25](https://github.com/pflagerd/git-stuff/issues/25) Bug:
   `checkRepository()` crashes on a `.gitrepos` entry that is a dangling
   symbolic link.
