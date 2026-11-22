@@ -8,7 +8,9 @@ gitignore-serialization and fast-forward merged into master, which closed
   result structs, are done.)
 - Next: #15, check-nested reporting git repos in the parent that .gitrepos
   doesn't list. Proposal, all decisions made, in
-  docs/unlisted-repos-proposal.md.
+  docs/unlisted-repos-proposal.md. Step 1 (the default mode, direct
+  subdirectories, not fixable) is done; next are -r/--recursive,
+  -f/--force, then --fix registering them.
 - e501a81 deleted the Python scripts, the bash helpers other than
   bin/ls-repos, and the prebuilt binaries. Issues #1 #11 #14 #16 #17 were
   about those files and are still open on GitHub. #15 was too, but the check

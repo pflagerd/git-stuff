@@ -261,6 +261,19 @@ listed url). It never uses the network, and prints nothing when there's
 nothing to report. With `--fix` it repairs what it can, writes both files,
 and prints `fixed N problem(s)`.
 
+It also reports each git repository directly in the parent directory that
+`.gitrepos` doesn't list, so you can register it with `add-nested`:
+
+- **Not reported:** a directory that any `.gitignore` line names, inside the
+  managed block or outside it, in any slash form (`household`,
+  `/household/`). Writing such a line by hand is how you keep a repository
+  there on purpose. Lines with wildcards (`*`, `?`, `[`) don't count.
+- **Also not reported:** names starting with `.`, and anything that isn't a
+  directory. A symbolic link to a repository is reported.
+- **Only direct subdirectories** are looked at, not deeper ones.
+- **`--fix` doesn't fix this one yet** (planned in
+  [#15](https://github.com/pflagerd/git-stuff/issues/15)).
+
 ### `remove-nested <nested directory>...`
 
 Removes each nested directory from `.gitrepos` and from the managed block of

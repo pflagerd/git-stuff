@@ -1,6 +1,9 @@
 # check-nested: report nested repos that `.gitrepos` doesn't list (proposal)
 
-Status: **all decisions made; not implemented yet** (see Answers). Issue:
+Status: **all decisions made** (see Answers). **Step 1, the default
+mode (direct subdirectories, not fixable), is implemented** in
+`ParentDirectory.checkDisk()` item 6. Still to do: `-r`/`--recursive`,
+`-f`/`--force`, and `--fix` registering unlisted repos. Issue:
 [#15](https://github.com/pflagerd/git-stuff/issues/15). Builds on
 `docs/nested-repos-design.md` (`ParentDirectory.checkDisk()`) and follows the
 conventions of `docs/nested-commands-proposal.md`.

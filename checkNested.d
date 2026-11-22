@@ -1,7 +1,8 @@
 /**
  * check-nested: reports problems with a parent directory's .gitignore and
- * .gitrepos, and with the nested repos they list, without using the
- * network. With --fix, first repairs what can be repaired.
+ * .gitrepos, with the nested repos they list, and with git repositories
+ * in the parent that .gitrepos doesn't list, without using the network.
+ * With --fix, first repairs what can be repaired.
  *
  * Design: docs/nested-commands-proposal.md
  */
@@ -15,7 +16,8 @@ import parentDirectory : ParentDirectory;
 enum usage = "Usage: check-nested [-C <directory>] [--fix]
 
 Reports problems with .gitignore, .gitrepos and the nested repos they
-list. Prints nothing when there are none. Exit status: 0 no problems,
+list, and git repositories in the directory that .gitrepos doesn't list.
+Prints nothing when there are none. Exit status: 0 no problems,
 1 problems remain, 2 bad usage or a file that can't be read.
 ";
 

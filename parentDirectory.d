@@ -185,11 +185,13 @@ class ParentDirectory
     }
 
     /**
-     * Problems on disk with the nested repos .gitrepos lists. None is
-     * fixable: a missing clone is pull-nested's job, and the rest need her
-     * judgement. check() never touches the disk; this always does.
+     * Problems on disk: with the nested repos .gitrepos lists, and nested
+     * repos it doesn't list. None is fixable: a missing clone is
+     * pull-nested's job, and the rest need her judgement. check() never
+     * touches the disk; this always does.
      *
-     * For each distinct directory, in file order, the first problem found:
+     * For each distinct directory in .gitrepos, in file order, the first
+     * problem found:
      * 1. it does not exist (#6);
      * 2. it is not a directory;
      * 3. `git -C <dir> rev-parse --show-toplevel` fails: not a git
@@ -199,6 +201,16 @@ class ParentDirectory
      * 5. no remote's url (`remote.<name>.url`, as stored, before any
      *    insteadOf rewriting) equals the url in .gitrepos.
      *
+     * Then, for the parent's direct entries, in name order (#15):
+     * 6. a nested repo (checkRepository's `repository`) that .gitrepos
+     *    doesn't list. Skipped, and so never reported: names starting with
+     *    "." (.git included), and directories that any .gitignore line
+     *    names, inside the managed block or outside it, in any slash form
+     *    (looseDirectory()), so a hand-written `/household/` keeps a
+     *    private repo quiet. Symbolic links are followed, so a link to a
+     *    repo is reported; files and dangling links are not. Only direct
+     *    entries are looked at, not deeper ones.
+     *
      * Git is run with an argument list, never through a shell, so names
      * with spaces are safe.
      */
@@ -207,7 +219,7 @@ class ParentDirectory
         import std.path : buildPath;
 
         Finding[] findings;
-        bool[string] seen;
+        bool[string] seen; // the distinct .gitrepos directories, "/alpha/" form
 
         foreach (gitReposEntry; _gitRepos.gitReposEntries)
         {
@@ -234,6 +246,95 @@ class ParentDirectory
             }
         }
 
+        return findings ~ unlistedRepositories(seen);
+    }
+
+    /**
+     * checkDisk()'s item 6: a finding for each direct entry of the parent
+     * that is a nested repo but is neither in `listed` (the .gitrepos
+     * directories) nor named by a .gitignore line, in name order.
+     */
+    private Finding[] unlistedRepositories(const bool[string] listed) const
+    {
+        import std.algorithm.iteration : map;
+        import std.algorithm.sorting : sort;
+        import std.array : array;
+        import std.file : dirEntries, exists, FileException, isDir, SpanMode;
+        import std.path : baseName, buildPath;
+
+        bool[string] named; // directories any .gitignore line names, "/alpha/" form
+        foreach (line; _gitIgnore.before ~ _gitIgnore.nested ~ _gitIgnore.after)
+        {
+            immutable namedDirectory = looseDirectory(line);
+            if (namedDirectory.length)
+            {
+                named[namedDirectory] = true;
+            }
+        }
+
+        // A parent that doesn't exist has no entries; items 1-5 already
+        // report every listed repo in it as missing.
+        if (!directory.exists || !directory.isDir)
+        {
+            return [];
+        }
+        string[] names;
+        try
+        {
+            // shallow: direct entries only. dirEntries gives them in no
+            // particular order, so they are sorted for stable output.
+            names = dirEntries(directory, SpanMode.shallow)
+                .map!(dirEntry => dirEntry.name.baseName).array;
+        }
+        catch (FileException exception)
+        {
+            return [Finding("", directory ~ ": could not list it to look for unlisted nested repos ("
+                ~ exception.msg ~ ")", false)];
+        }
+        names.sort();
+
+        Finding[] findings;
+        foreach (name; names)
+        {
+            if (name[0] == '.')
+            {
+                continue;
+            }
+            immutable nestedDirectory = "/" ~ name ~ "/";
+            if (nestedDirectory in listed || nestedDirectory in named)
+            {
+                continue;
+            }
+            // Only directories, following symbolic links. isDir follows them
+            // (stat(2)) and throws for a dangling one, which is skipped too.
+            // checkRepository can't be left to do this: exists() doesn't
+            // follow links (lstat(2)), so it would call isDir and throw.
+            immutable onDisk = buildPath(directory, name);
+            bool isDirectory;
+            try
+            {
+                isDirectory = onDisk.isDir;
+            }
+            catch (FileException)
+            {
+                isDirectory = false;
+            }
+            if (!isDirectory)
+            {
+                continue;
+            }
+            const repositoryResult = checkRepository(nestedDirectory, onDisk);
+            with (RepositoryOutcome) final switch (repositoryResult.outcome)
+            {
+            case repository:
+                findings ~= Finding(nestedDirectory, onDisk ~ ": " ~ nestedDirectory
+                    ~ " is a git repository but is not listed in " ~ _gitRepos.path
+                    ~ " (add it with add-nested)", false);
+                break;
+            case missing, notDirectory, notGitRepository, insideRepository:
+                break; // not a nested repo, so nothing to register
+            }
+        }
         return findings;
     }
 
@@ -978,4 +1079,90 @@ unittest
     const findings = new ParentDirectory(directory).checkDisk;
     assert(findings.length == 1);
     assert(findings[0].directory == "/beta/" && findings[0].message.canFind("no remote"));
+}
+
+/// Item 6: a nested repo in the parent that .gitrepos doesn't list is
+/// reported, unless a .gitignore line names it or its name starts with ".".
+/// Symbolic links are followed; plain directories, files and dangling links
+/// are not reported.
+unittest
+{
+    import std.algorithm.iteration : map;
+    import std.array : array;
+    import std.file : mkdir, symlink, write;
+    import gitIgnore : beginMarker, endMarker;
+
+    immutable directory = testDirectory("parentDirectory-disk-unlisted");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    // Repos the parent holds; parent is a plain directory, not a repository.
+    immutable parent = buildPath(directory, "parent");
+    git("init", "-q", buildPath(parent, "listed"));
+    git("-C", buildPath(parent, "listed"), "remote", "add", "origin", "listed.git");
+    git("init", "-q", buildPath(parent, "unlisted"));
+    git("init", "-q", buildPath(parent, "outsideBlock")); // named by a hand-written line
+    git("init", "-q", buildPath(parent, "insideBlock"));  // named by a block entry
+    buildPath(parent, "plain").mkdir;
+    buildPath(parent, "file").write("not a directory\n");
+    git("init", "-q", buildPath(parent, ".hidden")); // dot-directories are skipped
+    buildPath(parent, "nowhere").symlink(buildPath(parent, "dangling"));
+
+    // A repo outside the parent, reached only through a link in it.
+    immutable elsewhere = buildPath(directory, "elsewhere");
+    git("init", "-q", elsewhere);
+    elsewhere.symlink(buildPath(parent, "link"));
+
+    buildPath(parent, ".gitignore").write("*.o\noutsideBlock/\n" ~ beginMarker
+        ~ "\n/insideBlock/\n/listed/\n" ~ endMarker ~ "\n");
+    buildPath(parent, ".gitrepos").write("/listed/ listed.git\n");
+
+    const findings = new ParentDirectory(parent).checkDisk;
+    assert(findings.map!(finding => finding.directory).array == ["/link/", "/unlisted/"]);
+    assert(findings[1].message == buildPath(parent, "unlisted") ~ ": /unlisted/ is a git repository"
+        ~ " but is not listed in " ~ buildPath(parent, ".gitrepos") ~ " (add it with add-nested)");
+    foreach (finding; findings)
+    {
+        assert(!finding.fixable);
+    }
+}
+
+/// Item 6: a .gitignore line names a directory in any slash form, and only
+/// a line that can name a directory (not a wildcard) keeps it quiet.
+unittest
+{
+    import std.file : write;
+
+    immutable directory = testDirectory("parentDirectory-disk-unlisted-named");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    git("init", "-q", buildPath(directory, "beta"));
+    foreach (line; ["beta", "/beta", "beta/", "/beta/"])
+    {
+        buildPath(directory, ".gitignore").write(line ~ "\n");
+        assert(new ParentDirectory(directory).checkDisk.length == 0, line);
+    }
+    foreach (line; ["bet*", "# beta", "!beta"])
+    {
+        buildPath(directory, ".gitignore").write(line ~ "\n");
+        const findings = new ParentDirectory(directory).checkDisk;
+        assert(findings.length == 1 && findings[0].directory == "/beta/", line);
+    }
+}
+
+/// Item 6: a parent that doesn't exist has nothing to list, and no error.
+unittest
+{
+    immutable directory = testDirectory("parentDirectory-disk-unlisted-gone");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    assert(new ParentDirectory(buildPath(directory, "gone")).checkDisk.length == 0);
 }

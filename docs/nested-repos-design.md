@@ -329,6 +329,10 @@ local repositories in a temp directory (no network or SSH key needed).
   stored `remote.<name>.url` (`git config --get-regexp`), not the one `git
   remote get-url` shows after rewriting it through `url.<base>.insteadOf`
   ([git-config](https://git-scm.com/docs/git-config#Documentation/git-config.txt-urlltbasegtinsteadOf)).
+- Then, separately, each direct entry of the parent that is a nested repo
+  (the test above) but is not in `.gitrepos` (#15). A directory any
+  `.gitignore` line names, and names starting with `.`, are skipped;
+  symbolic links are followed. Design: `docs/unlisted-repos-proposal.md`.
 - Further criteria: TBD.
 
 ### `--fix` and exit status
