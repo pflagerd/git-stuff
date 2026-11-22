@@ -127,7 +127,12 @@ Teaching them what you're doing comes first. Speed comes second.
     after its first commit, while the rest of step 1 of #29 was still being
     written.)
   - The owner reviews and merges. Don't merge it yourself. After the merge,
-    tick the step in the issue's checklist.
+    tick the step in the issue's checklist, and delete the step's branch on
+    GitHub (`git push origin --delete <branch>`) once its PR shows as
+    merged and `git merge-base --is-ancestor origin/<branch> origin/master`
+    confirms it is contained in `master`. Also remove the step's local
+    worktree and branches with the safe forms: `git worktree remove`
+    without `--force`, and `git branch -d`. (Decided 2026-11-22.)
 - Everything else (docs, process, small fixes outside a step) is committed
   directly to `master`. Don't create other branches unless the owner asks.
   (A cloud session may be started with a branch name of its own; work as
