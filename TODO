@@ -4,11 +4,17 @@ gitignore-serialization and fast-forward merged into master, which closed
 #2 #3 #5 #8 #9 #10; #6 was closed by hand (checkDisk covers it). Next:
 - The README was reviewed end to end (#13, closed).
 - The remaining work is tracked as GitHub issues, listed in README.md under
-  "Planned work": #4 #7 #18 #21. (#12 and #19, push-nested, and #20, result
-  structs, are done.)
+  "Planned work": #15 #4 #7 #18 #21. (#12 and #19, push-nested, and #20,
+  result structs, are done.)
+- Next: #15, check-nested reporting git repos in the parent that .gitrepos
+  doesn't list. Proposal, with decisions still to make, in
+  docs/unlisted-repos-proposal.md.
 - e501a81 deleted the Python scripts, the bash helpers other than
-  bin/ls-repos, and the prebuilt binaries. Issues #1 #11 #14 #15 #16 #17 were
-  about those files and are still open on GitHub.
+  bin/ls-repos, and the prebuilt binaries. Issues #1 #11 #14 #16 #17 were
+  about those files and are still open on GitHub. #15 was too, but the check
+  it asks for was never written in D, so it is still to do. #14 (report
+  .gitrepos entries whose remote can't be reached) may be the same; not yet
+  decided.
 - add_nested.d.todo and pull_nested.d.todo are notes from before the D
   rewrite; compare them with the unit tests to see which cases are missing.
 

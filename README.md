@@ -335,6 +335,9 @@ the one-line `main()` the in-process tests leave out.
 
 Tracked as GitHub issues:
 
+- [#15](https://github.com/pflagerd/git-stuff/issues/15) Make `check-nested`
+  report git repositories in the parent directory that `.gitrepos` doesn't
+  list (proposal in `docs/unlisted-repos-proposal.md`).
 - [#7](https://github.com/pflagerd/git-stuff/issues/7) Check that the
   directories named by `.gitignore` lines outside the managed block still
   exist.
