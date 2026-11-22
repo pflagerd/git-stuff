@@ -11,11 +11,13 @@ import std.stdio : File;
 import nestedCommon : CommonOptions, ExitStatus, loadParent, parseOptions, printFindings;
 import parentDirectory : ParentDirectory;
 
-enum usage = "Usage: remove-nested [-C <directory>] [--fix] <nested directory>...
+enum usage = "Usage: remove-nested [-C <directory>] [--fix | --no-check] <nested directory>...
 
 Removes each nested directory from .gitrepos and from the managed block of
-.gitignore. The directory itself is never touched. Exit status: 0 done,
-1 something wasn't registered or problems remain, 2 bad usage or a file
+.gitignore. The directory itself is never touched. Afterwards, problems
+left in the two files are reported, except with --no-check. Exit status:
+0 done, 1 something wasn't registered or problems remain (with --no-check,
+only something not registered or a failed write), 2 bad usage or a file
 that can't be read.
 ";
 
@@ -99,7 +101,13 @@ ExitStatus run(string[] args, File output, File errors)
     }
     output.flush(); // before the warnings that follow on the error stream
 
-    immutable remaining = printFindings(parentDirectory.check, errors);
+    // --no-check skips this report (#29); the exit status then reflects
+    // only the removal: a name that wasn't registered, or a failed write.
+    bool remaining = false;
+    if (!commonOptions.noCheck)
+    {
+        remaining = printFindings(parentDirectory.check, errors) > 0;
+    }
     return notFound || remaining ? ExitStatus.findings : ExitStatus.ok;
 }
 
@@ -321,6 +329,50 @@ unittest
     assert(buildPath(parent, ".gitrepos").readText == "/beta/ b.git dev\n");
     assert(buildPath(parent, ".gitignore").readText
         == "*.o\n" ~ beginMarker ~ "\n/beta/\n" ~ endMarker ~ "\n");
+}
+
+/// --no-check (#29): the removal happens, nothing is reported about the
+/// files afterwards, and the exit status reflects only the removal; a name
+/// that isn't registered still exits 1. --no-check --fix is bad usage
+/// (decision 12) and changes nothing.
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable scratch = testDirectory("removeNested-no-check");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = twoRepos(scratch);
+    immutable gitIgnorePath = buildPath(parent, ".gitignore");
+    immutable gitReposPath = buildPath(parent, ".gitrepos");
+    // /ghost/ is in the block but not in .gitrepos: a finding --fix can't repair.
+    gitIgnorePath.write("*.o\n" ~ beginMarker ~ "\n/alpha/\n/beta/\n/ghost/\n" ~ endMarker ~ "\n");
+
+    string[2] text;
+    foreach (given; [["--no-check", "--fix"], ["--fix", "--no-check"]])
+    {
+        assert(removeNested(scratch, parent, given ~ "alpha", text) == 2, given[0]);
+        assert(text[1] == "remove-nested: --no-check can't be used with --fix: with the checks off,"
+            ~ " there is nothing for it to do\n", text[1]);
+        assert(text[0] == "");
+        assert(gitReposPath.readText == "/alpha/ a.git\n/beta/ b.git dev\n"); // untouched
+    }
+
+    assert(removeNested(scratch, parent, ["--no-check", "alpha"], text) == 0, text[1]);
+    assert(text[0] == "removed /alpha/ from .gitrepos and .gitignore\n" && text[1] == "", text[1]);
+    assert(gitReposPath.readText == "/beta/ b.git dev\n");
+    assert(gitIgnorePath.readText == "*.o\n" ~ beginMarker ~ "\n/beta/\n/ghost/\n" ~ endMarker ~ "\n");
+
+    // Without --no-check the same parent is reported, as before.
+    assert(removeNested(scratch, parent, ["beta"], text) == 1);
+    assert(text[1].canFind("warning: ") && text[1].canFind("/ghost/ is in the managed block"), text[1]);
+
+    // A name that isn't registered is the removal's own failure: still 1.
+    assert(removeNested(scratch, parent, ["--no-check", "delta"], text) == 1);
+    assert(text[1].canFind("delta is in neither") && !text[1].canFind("/ghost/"), text[1]);
 }
 
 /// Usage: no directory, an unknown option, --help; a malformed file changes nothing.
