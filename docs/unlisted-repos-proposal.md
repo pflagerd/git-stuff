@@ -1,6 +1,6 @@
 # check-nested: report nested repos that `.gitrepos` doesn't list (proposal)
 
-Status: **proposal; decisions 1, 1b, 2 and 4 made, 3 open** (see Answers). Issue:
+Status: **proposal; decisions 1-4 made, 3b and "listed" open** (see Answers). Issue:
 [#15](https://github.com/pflagerd/git-stuff/issues/15). Builds on
 `docs/nested-repos-design.md` (`ParentDirectory.checkDisk()`) and follows the
 conventions of `docs/nested-commands-proposal.md`.
@@ -160,7 +160,29 @@ Afterwards:
 2. **Answer (2026-11-22):** 2(a). A directory named by a hand-written
    `.gitignore` line is not reported, and (from 1b) not descended into.
 
-3. Open.
+3. **Answer (2026-11-22):** 3(b). `--fix` registers unlisted
+   repositories, as `add-nested <dir>` would, reusing `entryFor()` in
+   `addNested.d`, which reads the url from `origin` and the branch by
+   `add-nested`'s rule.
+   - **Only `check-nested` does this.** Its `--fix` reads git state from
+     disk. `ParentDirectory.fix()` works in memory only, and the other
+     commands' `--fix` stay as they are.
+   - **Some stay unfixable.** A repository for which `entryFor()` returns
+     `noOrigin` or `detachedHead` is still reported, but not marked
+     fixable, and the message says to run `add-nested` with `--url` or
+     `--branch`.
+   - Open (3b): **where does `-r --fix` register a deeper repository?**
+     - (i) **Recommended:** only when its nearest enclosing parent (see
+       "listed" below) is the `-C` directory itself. Any other repository
+       is reported with "run `check-nested -C <that directory> --fix`", so
+       one run never writes into another repository's working tree.
+     - (ii) Always, in the nearest enclosing parent's `.gitrepos` and
+       `.gitignore`, creating them there if needed.
+
+     Today's case: `pflager.net/projects/genmitsu-jinsoku-Z3-galvo-laser`
+     belongs to `pflager.net`'s git, not the top parent's. So "listed"
+     should take the nearest enclosing directory that is a git repository
+     **or** has a `.gitrepos`, rather than only one with a `.gitrepos`.
 
 4. **Answer (2026-11-22), not the recommendation:** follow symbolic links
    (as in 1b), and skip all dot-directories, `.git` included.
