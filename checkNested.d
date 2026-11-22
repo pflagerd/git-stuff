@@ -4,7 +4,10 @@
  * in the parent that .gitrepos doesn't list, without using the network.
  * With --fix, first repairs what can be repaired, which includes
  * registering those repositories as `add-nested <dir>` would
- * (ParentDirectory.registerUnlisted()).
+ * (ParentDirectory.registerUnlisted()). With -r/--recursive, the search
+ * for unlisted repositories goes below the direct subdirectories
+ * (ParentDirectory.checkDisk(Yes.recursive)); --fix then registers only
+ * those whose nearest enclosing parent is the -C directory.
  *
  * Design: docs/nested-commands-proposal.md
  */
@@ -15,14 +18,18 @@ import std.stdio : File;
 import nestedCommon : CommonOptions, ExitStatus, loadParent, parseOptions, printFindings;
 import parentDirectory : ParentDirectory;
 
-enum usage = "Usage: check-nested [-C <directory>] [--fix]
+enum usage = "Usage: check-nested [-C <directory>] [-r] [--fix]
 
 Reports problems with .gitignore, .gitrepos and the nested repos they
 list, and git repositories in the directory that .gitrepos doesn't list.
 Prints nothing when there are none. With --fix, also registers each of
 those repositories as add-nested <directory> would, if it has an origin
-remote and a current branch. Exit status: 0 no problems,
-1 problems remain, 2 bad usage or a file that can't be read.
+remote and a current branch. With -r, looks below the direct
+subdirectories too, except in directories whose name starts with . or
+that a .gitignore line names; a repository found there belongs to the
+nearest directory above it that is a git repository or has a .gitrepos,
+and --fix registers it only when that is this directory. Exit status:
+0 no problems, 1 problems remain, 2 bad usage or a file that can't be read.
 ";
 
 /**
@@ -36,8 +43,12 @@ ExitStatus run(string[] args, File output, File errors)
     import std.algorithm.iteration : filter;
     import std.algorithm.searching : count;
 
+    import std.typecons : No, Yes;
+
     CommonOptions commonOptions;
-    const parsed = parseOptions(args, commonOptions, output, errors, usage);
+    bool recursive;
+    const parsed = parseOptions(args, commonOptions, output, errors, usage,
+        "recursive|r", "Look below the direct subdirectories too.", &recursive);
     if (!parsed.proceed)
     {
         return parsed.exitStatus;
@@ -58,7 +69,7 @@ ExitStatus run(string[] args, File output, File errors)
     {
         immutable fixable = parentDirectory.check.filter!(finding => finding.fixable).count;
         // Registered first, so fix() then sorts them into both files.
-        const gitReposEntries = parentDirectory.registerUnlisted();
+        const gitReposEntries = parentDirectory.registerUnlisted(recursive ? Yes.recursive : No.recursive);
         parentDirectory.fix();
         try
         {
@@ -83,7 +94,8 @@ ExitStatus run(string[] args, File output, File errors)
         }
     }
 
-    immutable remaining = printFindings(parentDirectory.check ~ parentDirectory.checkDisk, errors);
+    immutable remaining = printFindings(parentDirectory.check
+        ~ parentDirectory.checkDisk(recursive ? Yes.recursive : No.recursive), errors);
     return remaining ? ExitStatus.findings : ExitStatus.ok;
 }
 
@@ -269,6 +281,63 @@ unittest
     assert(checkNested(scratch, parent, [], text) == 0);
     assert(text[0] == "" && text[1] == "");
     assert(checkNested(scratch, parent, ["--fix"], text) == 0);
+    assert(text[0] == "" && text[1] == "");
+}
+
+/// -r: deeper unlisted repos are reported. --fix -r registers only those
+/// whose nearest enclosing parent is the -C directory; the others keep
+/// their "run check-nested -C <that directory> --fix" warning. Without
+/// -r, neither is looked at.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import nestedCommon : makeRemote;
+
+    immutable scratch = testDirectory("checkNested-fix-recursive");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(scratch, "gamma", "main");
+    void cloneTo(string clone)
+    {
+        git("clone", "-q", "-b", "main", remote, clone);
+        git("-C", clone, "remote", "set-head", "origin", "main"); // not left to clone
+    }
+    immutable parent = buildPath(scratch, "parent");
+    cloneTo(buildPath(parent, "tools", "gamma"));            // parent: the top
+    cloneTo(buildPath(parent, "research", "unlistedhere")); // parent: research
+    buildPath(parent, "research", ".gitrepos").write("");
+    immutable ignoreText = "*.o\n";
+    buildPath(parent, ".gitignore").write(ignoreText);
+
+    string[2] text;
+    assert(checkNested(scratch, parent, [], text) == 0); // default: direct entries only
+    assert(text[0] == "" && text[1] == "");
+
+    assert(checkNested(scratch, parent, ["-r"], text) == 1);
+    assert(text[0] == "");
+    assert(text[1] == "warning: " ~ buildPath(parent, "research", "unlistedhere") ~ ": /unlistedhere/"
+        ~ " is a git repository but is not listed in " ~ buildPath(parent, "research", ".gitrepos")
+        ~ "; run check-nested -C " ~ buildPath(parent, "research") ~ " --fix\n"
+        ~ "warning: " ~ buildPath(parent, "tools", "gamma") ~ ": /tools/gamma/ is a git"
+        ~ " repository but is not listed in " ~ buildPath(parent, ".gitrepos") ~ " (fixable with --fix)\n");
+    assert(buildPath(parent, ".gitignore").readText == ignoreText); // untouched without --fix
+    assert(!buildPath(parent, ".gitrepos").exists);
+
+    assert(checkNested(scratch, parent, ["--recursive", "--fix"], text) == 1); // research's remains
+    assert(text[0] == "added /tools/gamma/ " ~ remote ~ "\nfixed 1 problem(s)\n");
+    assert(!text[1].canFind("/tools/gamma/") && text[1].canFind("/unlistedhere/"));
+    assert(buildPath(parent, ".gitrepos").readText == "/tools/gamma/ " ~ remote ~ "\n");
+    assert(buildPath(parent, ".gitignore").readText
+        == "*.o\n" ~ beginMarker ~ "\n/tools/gamma/\n" ~ endMarker ~ "\n");
+    assert(buildPath(parent, "research", ".gitrepos").readText == ""); // another parent's file: untouched
+
+    // Running it where the warning says fixes the rest.
+    assert(checkNested(scratch, buildPath(parent, "research"), ["--fix"], text) == 0);
+    assert(checkNested(scratch, parent, ["-r"], text) == 0, text[0] ~ "|" ~ text[1]);
+    assert(checkNested(scratch, parent, ["-r"], text) == 0);
     assert(text[0] == "" && text[1] == "");
 }
 

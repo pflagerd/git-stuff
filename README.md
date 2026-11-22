@@ -274,7 +274,23 @@ each one, counting them in `fixed N problem(s)`:
   there on purpose. Lines with wildcards (`*`, `?`, `[`) don't count.
 - **Also not reported:** names starting with `.`, and anything that isn't a
   directory. A symbolic link to a repository is reported.
-- **Only direct subdirectories** are looked at, not deeper ones.
+- **Only direct subdirectories** are looked at, unless you give `-r`.
+- **`-r` / `--recursive`** looks deeper. It walks into every directory,
+  repositories included, except directories whose name starts with `.` and
+  directories that a `.gitignore` line names. That includes the `.gitignore`
+  files it meets on the way, each line relative to its own folder, and the
+  managed block, so listed repositories aren't walked into. It follows
+  symbolic links, and enters each directory only once, so a link loop
+  can't trap it. A repository found below the top belongs to its nearest
+  enclosing parent: the nearest directory above it that is a git
+  repository or has a `.gitrepos`, or else the `-C` directory. It counts
+  as listed when that parent's `.gitrepos` lists it, with the path
+  relative to that parent. `--fix` registers it only when that parent is
+  the `-C` directory. Otherwise the warning says to run `check-nested -C
+  <that directory> --fix` (with `-r` when it's deeper than a direct
+  subdirectory there), so one run never writes into another repository's
+  files. A directory it can't list, or a nested `.gitrepos` it can't read,
+  is a warning, and the walk goes on.
 - **`--fix` can't register** a repository with no `origin` remote, or one
   on a detached HEAD. The warning stays, and says to use `add-nested --url`
   or `add-nested --branch`. Registering doesn't use the network either, so
