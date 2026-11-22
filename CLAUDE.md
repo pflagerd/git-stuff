@@ -22,6 +22,7 @@ Teaching them what you're doing comes first. Speed comes second.
 - Dispatch agents to perform the work wherever possible.
   - Agents should be Opus 5.5/Medium unless otherwise specified
   - Agents should do even the most routine or trivial tasks so that the main session AI can be listening attentively to the Owner.
+  - How to dispatch agents (briefs, parallel work, draft PRs, what happens after a merge): follow [agent-dispatch.md](https://github.com/pflagerd/claude-stuff/blob/master/agent-dispatch.md) in `pflagerd/claude-stuff`.
 
 ### After each change
 - Walk them through the diff: what each part does and why it's written that
