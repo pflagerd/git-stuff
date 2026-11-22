@@ -14,13 +14,15 @@ import nestedCommon : branchAfterClone, CloneOutcome, cloneNested, CommonOptions
     remoteHasBranch, runGit;
 import parentDirectory : ParentDirectory, RepositoryOutcome;
 
-enum usage = "Usage: pull-nested [-C <directory>] [--fix]
+enum usage = "Usage: pull-nested [-C <directory>] [--fix | --no-check]
 
 For each nested repo in .gitrepos: clones it if it is missing and checks
 out its branch; otherwise runs git pull --ff-only, which only ever moves a
 branch forward. An existing repo is never switched to another branch.
-Exit status: 0 done, 1 a repo failed or problems remain, 2 bad usage or a
-file that can't be read.
+Problems with .gitignore and .gitrepos are reported first, except with
+--no-check; a directory that isn't a nested repo is still skipped.
+Exit status: 0 done, 1 a repo failed or problems remain (with --no-check,
+only a failed repo), 2 bad usage or a file that can't be read.
 ";
 
 /**
@@ -62,14 +64,21 @@ ExitStatus run(string[] args, File output, File errors)
             return ExitStatus.findings;
         }
     }
-    bool failed = printFindings(parentDirectory.check, errors) > 0;
+    // --no-check skips this report (#29 decision 13); pullOne's
+    // checkRepository() test of each repo stays, as it decides whether
+    // that repo can be pulled. The exit status then reflects only the pull.
+    bool failed = false;
+    if (!commonOptions.noCheck)
+    {
+        failed = printFindings(parentDirectory.check, errors) > 0;
+    }
 
     bool[string] seen;
     foreach (gitReposEntry; parentDirectory.gitRepos.gitReposEntries)
     {
         if (gitReposEntry.directory in seen)
         {
-            continue; // a duplicate; check() has already reported it
+            continue; // a duplicate; check() has reported it, unless --no-check
         }
         seen[gitReposEntry.directory] = true;
 
@@ -485,6 +494,53 @@ unittest
 
     assert(pullNested(scratch, parent, ["--fix"], text) == 0, text[1]);
     assert(buildPath(parent, ".gitignore").readText.canFind("/alpha/"));
+}
+
+/// --no-check (#29): nothing is reported about the files, they stay
+/// untouched, and the exit status reflects only the pull. A directory that
+/// isn't a nested repo is still skipped (decision 13). --no-check --fix is
+/// bad usage (decision 12).
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable scratch = testDirectory("pullNested-no-check");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(scratch, "alpha", "main");
+    immutable parent = buildPath(scratch, "parent");
+    immutable listing = "/alpha/ " ~ remote ~ "\n";
+    gitrepos(parent, listing, true); // no .gitignore: /alpha/ isn't in the managed block
+
+    string[2] text;
+    assert(pullNested(scratch, parent, ["--no-check"], text) == 0, text[1]);
+    assert(!text[1].canFind("warning: "), text[1]);
+    assert(currentBranch(buildPath(parent, "alpha")) == "main"); // cloned
+    assert(buildPath(parent, ".gitrepos").readText == listing);
+    assert(!buildPath(parent, ".gitignore").exists);
+
+    // Without --no-check the same parent is reported, as before.
+    assert(pullNested(scratch, parent, [], text) == 1);
+    assert(text[1].canFind("warning: ") && text[1].canFind("not in the managed block"));
+
+    // checkRepository() still decides whether a repo can be pulled.
+    rmdirRecurse(buildPath(parent, "alpha"));
+    buildPath(parent, "alpha").mkdirRecurse;
+    assert(pullNested(scratch, parent, ["--no-check"], text) == 1);
+    assert(text[1].canFind("/alpha/ is not a git repository") && text[1].canFind("skipped"));
+    assert(!text[1].canFind("warning: "), text[1]);
+
+    foreach (given; [["--no-check", "--fix"], ["--fix", "--no-check"]])
+    {
+        assert(pullNested(scratch, parent, given, text) == 2, given[0]);
+        assert(text[1] == "pull-nested: --no-check can't be used with --fix: with the checks off,"
+            ~ " there is nothing for it to do\n", text[1]);
+        assert(text[0] == "", text[0]); // no "== /alpha/": nothing was pulled
+        assert(!buildPath(parent, ".gitignore").exists);
+    }
 }
 
 /// Usage: a positional argument, an unknown option, --help, a malformed file.

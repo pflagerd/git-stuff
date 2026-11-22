@@ -14,14 +14,18 @@ import nestedCommon : branchAfterClone, CommonOptions, currentBranch, ExitStatus
     loadParent, parseOptions, printFindings, remoteDefaultBranch, remoteHasBranch, runGit;
 import parentDirectory : ParentDirectory, RepositoryOutcome;
 
-enum usage = "Usage: push-nested [-C <directory>] [--fix] [--origin-only] [--parent]
+enum usage = "Usage: push-nested [-C <directory>] [--fix | --no-check] [--origin-only]
+                   [--parent]
 
 Pushes the current branch of each nested repo in .gitrepos to every remote
 it has (only origin with --origin-only), setting the upstream to origin if
 the branch has none. Never forces. A repo on a different branch from the
 one .gitrepos means is skipped. With --parent, also pushes the parent
-directory. Exit status: 0 done, 1 a repo was skipped or failed or problems
-remain, 2 bad usage or a file that can't be read.
+directory. Problems with .gitignore and .gitrepos are reported first,
+except with --no-check; a directory that isn't a nested repo is still
+skipped. Exit status: 0 done, 1 a repo was skipped or failed or problems
+remain (with --no-check, only a skipped or failed repo), 2 bad usage or a
+file that can't be read.
 ";
 
 /// What a push run was asked to do.
@@ -72,14 +76,21 @@ ExitStatus run(string[] args, File output, File errors)
             return ExitStatus.findings;
         }
     }
-    bool failed = printFindings(parentDirectory.check, errors) > 0;
+    // --no-check skips this report (#29 decision 13); pushNestedRepo's
+    // checkRepository() test of each repo stays, as it decides whether
+    // that repo can be pushed. The exit status then reflects only the push.
+    bool failed = false;
+    if (!commonOptions.noCheck)
+    {
+        failed = printFindings(parentDirectory.check, errors) > 0;
+    }
 
     bool[string] seen;
     foreach (gitReposEntry; parentDirectory.gitRepos.gitReposEntries)
     {
         if (gitReposEntry.directory in seen)
         {
-            continue; // a duplicate; check() has already reported it
+            continue; // a duplicate; check() has reported it, unless --no-check
         }
         seen[gitReposEntry.directory] = true;
 
@@ -611,6 +622,55 @@ unittest
     assert(pushNested(scratch, pushSetUp.parent, ["--parent"], text) == 0, text[1]);
     assert(tip(parentRemote, "main") == tip(pushSetUp.parent, "main"));
     assert(text[0].indexOf("== /alpha/") < text[0].indexOf("== parent "));
+}
+
+/// --no-check (#29): nothing is reported about the files, they stay
+/// untouched, and the exit status reflects only the push. A directory that
+/// isn't a nested repo is still skipped (decision 13). --no-check --fix is
+/// bad usage (decision 12).
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.file : remove;
+
+    immutable scratch = testDirectory("pushNested-no-check");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    const pushSetUp = setUp(scratch);
+    immutable gitIgnorePath = buildPath(pushSetUp.parent, ".gitignore");
+    gitIgnorePath.remove; // now /alpha/ isn't in the managed block
+    immutable listing = buildPath(pushSetUp.parent, ".gitrepos").readText;
+    commit(pushSetUp.alpha);
+
+    string[2] text;
+    assert(pushNested(scratch, pushSetUp.parent, ["--no-check"], text) == 0, text[1]);
+    assert(!text[1].canFind("warning: "), text[1]);
+    assert(tip(pushSetUp.origin, "main") == tip(pushSetUp.alpha, "main")); // pushed
+    assert(buildPath(pushSetUp.parent, ".gitrepos").readText == listing);
+    assert(!gitIgnorePath.exists);
+
+    // Without --no-check the same parent is reported, as before.
+    assert(pushNested(scratch, pushSetUp.parent, [], text) == 1);
+    assert(text[1].canFind("warning: ") && text[1].canFind("not in the managed block"));
+
+    // checkRepository() still decides whether a repo can be pushed.
+    rmdirRecurse(pushSetUp.alpha);
+    pushSetUp.alpha.mkdirRecurse;
+    assert(pushNested(scratch, pushSetUp.parent, ["--no-check"], text) == 1);
+    assert(text[1].canFind("is not a git repository") && text[1].canFind("skipped"));
+    assert(!text[1].canFind("warning: "), text[1]);
+
+    foreach (given; [["--no-check", "--fix"], ["--fix", "--no-check"]])
+    {
+        assert(pushNested(scratch, pushSetUp.parent, given, text) == 2, given[0]);
+        assert(text[1] == "push-nested: --no-check can't be used with --fix: with the checks off,"
+            ~ " there is nothing for it to do\n", text[1]);
+        assert(text[0] == "", text[0]); // no "== /alpha/": nothing was pushed
+        assert(!gitIgnorePath.exists);
+    }
 }
 
 /// Usage: a positional argument, an unknown option, --help, a malformed file.
