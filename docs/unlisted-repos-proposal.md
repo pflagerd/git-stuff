@@ -1,6 +1,6 @@
 # check-nested: report nested repos that `.gitrepos` doesn't list (proposal)
 
-Status: **proposal; decision 1 made, 1b and 2-4 still open.** Issue:
+Status: **proposal; decisions 1, 1b, 2 and 4 made, 3 open** (see Answers). Issue:
 [#15](https://github.com/pflagerd/git-stuff/issues/15). Builds on
 `docs/nested-repos-design.md` (`ParentDirectory.checkDisk()`) and follows the
 conventions of `docs/nested-commands-proposal.md`.
@@ -144,4 +144,47 @@ Afterwards:
    `-r` / `--recursive` to search deeper (1(b), as an option). How the
    recursive walk behaves is decision 1b.
 
-(The others are to be filled in when they are made.)
+1b. **Answer (2026-11-22), not the recommendation:**
+   - **Recurse into every git repository, listed or not.** Finding one
+     doesn't stop the walk.
+   - **Follow symbolic links.** (Not part of the answer, but needed: the
+     walk remembers each directory's resolved path and doesn't enter one
+     twice, so links can't loop.)
+   - **Don't descend into a directory that a hand-written `.gitignore`
+     line names.** That means a line outside the managed block, in the
+     parent's `.gitignore` or in any nested `.gitignore` the walk meets.
+     Each line names a directory relative to its own `.gitignore`'s folder,
+     using `looseDirectory()`'s rule; wildcard lines don't stop the walk.
+   - **Skip every directory whose name starts with `.`.**
+
+2. **Answer (2026-11-22):** 2(a). A directory named by a hand-written
+   `.gitignore` line is not reported, and (from 1b) not descended into.
+
+3. Open.
+
+4. **Answer (2026-11-22), not the recommendation:** follow symbolic links
+   (as in 1b), and skip all dot-directories, `.git` included.
+
+Still to settle:
+- **What "listed" means below the top level.** The proposal: a repository
+  counts as listed when the `.gitrepos` of the nearest enclosing directory
+  that has one lists it, with paths relative to that directory. That
+  directory need not be a git repository, as with any parent directory.
+  (Found on real data, 2026-11-22: `openai-product-explorations/deep-research/`
+  is a plain directory with its own `.gitrepos`, and "nearest enclosing
+  repository" would have reported its listed repo wrongly.)
+- **Consequence of 1b: hand-written lines are skipped.** Because a
+  directory named by a hand-written line is skipped, a parent whose
+  `.gitignore` still names its nested repos outside the managed block
+  (before `--fix`) has those repos skipped, not walked.
+
+Simulated on `~/desktops/default` on 2026-11-22, with a throwaway program
+applying the answers above:
+- **Default (direct children):** 7 unlisted repositories, in about 0.0 s.
+- **`-r`, today's files:** the same 7. The walk visited 44,713 directories
+  in about 4 s, but went into none of the 62 listed repositories, because
+  the top `.gitignore` still names them by hand.
+- **`-r`, after `--fix`:** 8, adding
+  `pflager.net/projects/genmitsu-jinsoku-Z3-galvo-laser`, which is a
+  repository inside `pflager.net` that is neither listed nor ignored there.
+  The walk visited 54,585 directories in about 10 s.
