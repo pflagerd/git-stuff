@@ -1,6 +1,6 @@
 # check-nested: report nested repos that `.gitrepos` doesn't list (proposal)
 
-Status: **proposal; decisions below are not made yet.** Issue:
+Status: **proposal; decision 1 made, 1b and 2-4 still open.** Issue:
 [#15](https://github.com/pflagerd/git-stuff/issues/15). Builds on
 `docs/nested-repos-design.md` (`ParentDirectory.checkDisk()`) and follows the
 conventions of `docs/nested-commands-proposal.md`.
@@ -52,6 +52,30 @@ listed. `check-nested` reported none of the eight.
 - (c) (a), plus one level inside each directory that holds a deeper
   `.gitrepos` entry (`tools/` for `/tools/beta/`). A middle way, with an
   extra rule to explain.
+
+### 1b. What `-r` / `--recursive` walks into
+
+Decision 1 makes recursion an option. The question is what the walk does
+when it meets each kind of entry. Recommended:
+- **Stop at every git repository, listed or not.** A repository's contents
+  belong to it. Its own nested repos are its own `.gitrepos`'s business, and
+  `check-nested -C` on it checks them.
+- **Never follow symbolic links,** the same as decision 4. This also rules
+  out loops.
+- **Don't descend into a directory that a hand-written `.gitignore` line
+  names** (the decision 2 opt-out, if 2(a) is chosen). That lets her keep a
+  large plain tree out of the walk.
+- **Otherwise descend into every plain directory.** Matching git's full
+  `.gitignore` rules (wildcards, `**`, negation) is not attempted, so
+  `*.o`-style patterns don't stop the walk.
+
+The alternative is to run `git check-ignore` for the full rules. That works
+only when the parent directory is itself a git repository, and it costs one
+more process per directory.
+
+`-r` and `--recursive` belong to `check-nested` only, passed to
+`parseOptions` like `add-nested`'s `--branch`. `checkDisk()` takes a
+`recursive` parameter, so `check()` stays free of disk access.
 
 ### 2. Repos she leaves out on purpose
 
@@ -116,4 +140,8 @@ Afterwards:
 
 ## Answers
 
-(To be filled in when the decisions are made.)
+1. **Answer (2026-11-22):** direct subdirectories by default (1(a)), with
+   `-r` / `--recursive` to search deeper (1(b), as an option). How the
+   recursive walk behaves is decision 1b.
+
+(The others are to be filled in when they are made.)
