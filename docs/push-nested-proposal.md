@@ -9,6 +9,10 @@ and its terminal, one repo's failure doesn't stop the others).
 
 ## What exists today
 
+(When this proposal was written. `bin/push` and `add_origin_host_remote.py`
+were deleted in `e501a81` on 2026-11-18; the comparisons with `bin/push`
+below describe what it did.)
+
 `bin/push` pushes the current repository to **every remote that has a push
 url** (`git push <remote>` for each line of `git remote -v` ending in
 `(push)`). `add_origin_host_remote.py` adds a second remote named after the

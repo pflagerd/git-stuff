@@ -1,11 +1,16 @@
 # Nested repos: command-line tools (proposal)
 
-Status: **all decisions made; not implemented yet.** Branch: `gitignore-serialization`.
+Status: **implemented** in `addNested.d`, `pullNested.d`, `checkNested.d`,
+`removeNested.d` and `nestedCommon.d`, on `master`. (It was developed on
+branch `gitignore-serialization`, since merged.)
 Builds on `docs/nested-repos-design.md` (`GitIgnore`, `GitRepos`,
 `ParentDirectory`). Recommendations are marked; numbered **decisions** at the
 end are hers to make before any code is written.
 
 ## What exists today
+
+(When this proposal was written. `add_nested.d` and `pull_nested.d` were
+replaced by the new commands on 2026-10-29.)
 
 - `bin/add-nested <directory | url> ...` (`add_nested.d`): registers an
   existing clone in `.gitignore` and `.gitrepos`, reading the url from

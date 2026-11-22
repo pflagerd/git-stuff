@@ -1,6 +1,8 @@
 # Nested repos: design
 
-Status: **design agreed, not yet implemented.** Branch: `gitignore-serialization`.
+Status: **implemented** in `gitIgnore.d`, `gitRepos.d` and
+`parentDirectory.d`, on `master`. (It was developed on branch
+`gitignore-serialization`, since merged.)
 
 This document records the design for reading, checking and writing the two
 files that describe a parent directory's nested repositories: `.gitignore`
