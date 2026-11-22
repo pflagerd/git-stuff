@@ -8,6 +8,7 @@
 module parentDirectory;
 
 import core.attribute : mustuse;
+import std.typecons : Flag, No, Yes;
 
 import finding : Finding;
 import gitIgnore : GitIgnore;
@@ -35,13 +36,23 @@ enum RepositoryOutcome
     string message; /// "" when outcome is repository
 }
 
-/// A nested repo in the parent that .gitrepos doesn't list (checkDisk()
-/// item 6), and the entry `add-nested <dir>` would record for it.
+/**
+ * A nested repo that its nearest enclosing parent's .gitrepos doesn't list
+ * (checkDisk() item 6). That parent is the nearest directory above it that
+ * is a git repository or has a .gitrepos; the -C directory always counts.
+ * Without -r it is always the -C directory.
+ */
 private struct UnlistedRepository
 {
-    string directory;        /// "/alpha/" form
+    string directory;        /// "/tools/alpha/" form, relative to the -C directory
     string onDisk;           /// its path, for messages
-    EntryResult entryResult; /// found: registerUnlisted() can register it; otherwise why not
+    bool parentIsTop;        /// whether its nearest enclosing parent is the -C directory
+    string parentOnDisk;     /// that parent's path
+    string relativeToParent; /// "/alpha/" form, relative to that parent: what its .gitrepos would list
+    /// Only when parentIsTop: what `add-nested <dir>` would record (found:
+    /// registerUnlisted() can register it), or why not. Otherwise it is
+    /// left at its .init, which reads as found, so check parentIsTop first.
+    EntryResult entryResult;
 }
 
 class ParentDirectory
@@ -222,16 +233,21 @@ class ParentDirectory
      *    (looseDirectory()), so a hand-written `/household/` keeps a
      *    private repo quiet. Symbolic links are followed, so a link to a
      *    repo is reported; files and dangling links are not. Only direct
-     *    entries are looked at, not deeper ones. Fixable when entryFor()
+     *    entries are looked at, unless `recursive` is Yes.recursive (-r):
+     *    then the walk goes deeper, and a repository is judged against
+     *    its nearest enclosing parent (see unlistedRepositoriesRecursive()).
+     *    Fixable when that parent is this directory and entryFor()
      *    works out its entry as `add-nested <dir>` would (registerUnlisted()
      *    does the fixing, not fix()); not fixable when it has no origin
      *    remote, a detached HEAD, or an entry .gitrepos would refuse, and
-     *    the message says which add-nested option she needs.
+     *    the message says which add-nested option she needs, nor when the
+     *    parent is another directory, and the message says to run
+     *    check-nested there.
      *
      * Git is run with an argument list, never through a shell, so names
      * with spaces are safe.
      */
-    Finding[] checkDisk() const
+    Finding[] checkDisk(Flag!"recursive" recursive = No.recursive) const
     {
         import std.path : buildPath;
 
@@ -263,24 +279,40 @@ class ParentDirectory
             }
         }
 
-        return findings ~ unlistedFindings(seen);
+        return findings ~ unlistedFindings(seen, recursive);
     }
 
     /**
      * checkDisk()'s item 6: a finding for each unlisted nested repo (see
-     * unlistedRepositories()), fixable when entryFor() can work out its
-     * entry, so registerUnlisted() would register it. Otherwise the message
-     * says what add-nested needs to be given.
+     * unlistedRepositories(), and unlistedRepositoriesRecursive() for -r),
+     * fixable when its nearest enclosing parent is the -C directory and
+     * entryFor() can work out its entry, so registerUnlisted() would
+     * register it. Otherwise the message says what she needs to run.
      */
-    private Finding[] unlistedFindings(const bool[string] listed) const
+    private Finding[] unlistedFindings(const bool[string] listed, Flag!"recursive" recursive) const
     {
+        import std.algorithm.searching : canFind;
+        import std.path : buildPath;
+
         Finding[] findings;
-        foreach (unlistedRepository; unlistedRepositories(listed, findings))
+        const unlistedRepositories = recursive
+            ? unlistedRepositoriesRecursive(listed, findings)
+            : this.unlistedRepositories(listed, findings); // this.: the method, not the variable
+        foreach (unlistedRepository; unlistedRepositories)
         {
-            // the name add-nested takes, relative to the parent: "/alpha/" -> "alpha"
-            immutable name = unlistedRepository.directory[1 .. $ - 1];
-            immutable notListed = unlistedRepository.onDisk ~ ": " ~ unlistedRepository.directory
-                ~ " is a git repository but is not listed in " ~ _gitRepos.path;
+            // the name add-nested takes, relative to the parent: "/tools/alpha/" -> "tools/alpha"
+            immutable name = unlistedRepository.relativeToParent[1 .. $ - 1];
+            immutable notListed = unlistedRepository.onDisk ~ ": " ~ unlistedRepository.relativeToParent
+                ~ " is a git repository but is not listed in "
+                ~ buildPath(unlistedRepository.parentOnDisk, ".gitrepos");
+            if (!unlistedRepository.parentIsTop)
+            {
+                // Its own parent's business (proposal, answer 3b). Below a
+                // direct child of that parent only -r finds it, so say -r.
+                findings ~= Finding(unlistedRepository.directory, notListed ~ "; run check-nested -C "
+                    ~ unlistedRepository.parentOnDisk ~ (name.canFind('/') ? " -r" : "") ~ " --fix", false);
+                continue;
+            }
             const entryResult = unlistedRepository.entryResult;
             with (EntryOutcome) final switch (entryResult.outcome)
             {
@@ -317,7 +349,7 @@ class ParentDirectory
      *
      * Returns: the entries registered, in name order.
      */
-    GitReposEntry[] registerUnlisted()
+    GitReposEntry[] registerUnlisted(Flag!"recursive" recursive = No.recursive)
     {
         bool[string] listed; // the .gitrepos directories, "/alpha/" form
         foreach (gitReposEntry; _gitRepos.gitReposEntries)
@@ -327,8 +359,15 @@ class ParentDirectory
 
         Finding[] listingFindings; // a directory that can't be listed; checkDisk() reports it
         GitReposEntry[] gitReposEntries;
-        foreach (unlistedRepository; unlistedRepositories(listed, listingFindings))
+        const unlistedRepositories = recursive
+            ? unlistedRepositoriesRecursive(listed, listingFindings)
+            : this.unlistedRepositories(listed, listingFindings);
+        foreach (unlistedRepository; unlistedRepositories)
         {
+            if (!unlistedRepository.parentIsTop)
+            {
+                continue; // its own parent's business: one run never writes another's files
+            }
             with (EntryOutcome) final switch (unlistedRepository.entryResult.outcome)
             {
             case found:
@@ -424,14 +463,289 @@ class ParentDirectory
             {
             case repository:
                 // No --branch or --url: what `add-nested <name>` would record.
-                unlistedRepositories ~= UnlistedRepository(nestedDirectory, onDisk,
-                    entryFor(directory, nestedDirectory, "", ""));
+                unlistedRepositories ~= UnlistedRepository(nestedDirectory, onDisk, true,
+                    directory, nestedDirectory, entryFor(directory, nestedDirectory, "", ""));
                 break;
             case missing, notDirectory, notGitRepository, insideRepository:
                 break; // not a nested repo, so nothing to register
             }
         }
         return unlistedRepositories;
+    }
+
+    /**
+     * With -r: like unlistedRepositories(), but the walk goes below the
+     * direct entries, depth first, in name order at each level, so a
+     * repository comes just before what is inside it. Docs: the proposal's
+     * answers 1b, 3b and 4, and "Rules that follow".
+     *
+     * - It doesn't stop at repositories: it walks into every directory
+     *   except those whose name starts with "." and those that a line of
+     *   any .gitignore it meets names (looseDirectory()'s rule, each line
+     *   relative to its own .gitignore's folder). The managed block names
+     *   every listed repo, so listed repos aren't walked into.
+     * - It follows symbolic links, and never enters a directory twice: it
+     *   remembers each one's resolved path (realpath(3)), so a link loop
+     *   ends. A directory reached twice is walked the first way, in name
+     *   order.
+     * - A repository is reported when its nearest enclosing parent's
+     *   .gitrepos doesn't list it. That parent is the nearest directory
+     *   above it that is a git repository or has a .gitrepos, or else the
+     *   -C directory. Only those whose parent is the -C directory get an
+     *   entryFor() result, and so can be fixable.
+     * - Which directories are repositories: a direct entry is asked with
+     *   checkRepository(), as in the default mode, so -r reports at least
+     *   what the default does. Deeper, only a directory with a ".git"
+     *   entry is asked, so there is a git process per candidate, not per
+     *   directory.
+     * - A directory it can't list, or a .gitrepos or .gitignore it can't
+     *   read, is a finding appended to `findings`, and the walk goes on.
+     */
+    private UnlistedRepository[] unlistedRepositoriesRecursive(const bool[string] listed,
+        ref Finding[] findings) const
+    {
+        import std.file : exists, FileException, isDir;
+
+        // A parent that doesn't exist has no entries (see unlistedRepositories()).
+        if (!directory.exists || !directory.isDir)
+        {
+            return [];
+        }
+        Listing listing;
+        try
+        {
+            listing = listDirectory(directory);
+        }
+        catch (FileException exception)
+        {
+            findings ~= Finding("", directory ~ ": could not list it to look for unlisted nested repos ("
+                ~ exception.msg ~ ")", false);
+            return [];
+        }
+
+        bool[string] named; // directories .gitignore lines name, "/tools/alpha/" form, relative to -C
+        addNamed(_gitIgnore.before ~ _gitIgnore.nested ~ _gitIgnore.after, "", named);
+        bool[string] visited = [resolvePath(directory): true]; // a set: only the keys matter
+        UnlistedRepository[] unlistedRepositories;
+        walk(directory, "", listing, EnclosingParent(directory, "", true, listed.dup, true),
+            named, visited, unlistedRepositories, findings);
+        return unlistedRepositories;
+    }
+
+    /// The nearest enclosing parent, as the recursive walk carries it down.
+    private static struct EnclosingParent
+    {
+        string onDisk;              /// its path
+        string prefix;              /// its path relative to the -C directory, "/tools" form; "" for -C itself
+        bool isTop;                 /// whether it is the -C directory
+        const(bool)[string] listed; /// its .gitrepos directories, "/alpha/" form (a set)
+        bool readable;              /// false when its .gitrepos couldn't be read, so what it lists is unknown
+    }
+
+    /// One directory's entries, as the recursive walk needs them.
+    private static struct Listing
+    {
+        string[] directories; /// names of subdirectories not starting with ".", links followed, sorted
+        bool hasGit;          /// a ".git" entry (a directory, or a file as in a linked worktree)
+        bool hasGitRepos;     /// a ".gitrepos" entry
+        bool hasGitIgnore;    /// a ".gitignore" entry
+    }
+
+    /**
+     * Lists `onDisk` once: what the walk needs to know without running git.
+     *
+     * Throws: FileException if it can't be listed (for example, no
+     * permission to read it).
+     */
+    private static Listing listDirectory(string onDisk)
+    {
+        import std.algorithm.sorting : sort;
+        import std.file : dirEntries, FileException, SpanMode;
+        import std.path : baseName;
+
+        Listing listing;
+        foreach (dirEntry; dirEntries(onDisk, SpanMode.shallow))
+        {
+            immutable name = dirEntry.name.baseName;
+            if (name == ".git")
+            {
+                listing.hasGit = true;
+            }
+            else if (name == ".gitrepos")
+            {
+                listing.hasGitRepos = true;
+            }
+            else if (name == ".gitignore")
+            {
+                listing.hasGitIgnore = true;
+            }
+            if (name[0] == '.')
+            {
+                continue;
+            }
+            // DirEntry.isDir follows a symbolic link (stat(2)); for a
+            // dangling one it is false. The try is for anything else stat
+            // can refuse.
+            bool isDirectory;
+            try
+            {
+                isDirectory = dirEntry.isDir;
+            }
+            catch (FileException)
+            {
+                isDirectory = false;
+            }
+            if (isDirectory)
+            {
+                listing.directories ~= name;
+            }
+        }
+        listing.directories.sort();
+        return listing;
+    }
+
+    /// Adds to `named` the directory each of `lines` names (looseDirectory()),
+    /// relative to the folder with prefix `prefix` ("" for the -C directory).
+    private static void addNamed(const string[] lines, string prefix, ref bool[string] named)
+    {
+        foreach (line; lines)
+        {
+            immutable namedDirectory = looseDirectory(line);
+            if (namedDirectory.length)
+            {
+                named[prefix ~ namedDirectory] = true;
+            }
+        }
+    }
+
+    /**
+     * The recursive walk below `onDisk`, whose entries are `listing` and
+     * whose prefix is `prefix` (see EnclosingParent). Recursion, not an
+     * explicit stack: the depth is the depth of the tree, and each call's
+     * enclosing parent then simply goes out of scope on the way back up.
+     */
+    private void walk(string onDisk, string prefix, const Listing listing,
+        EnclosingParent enclosingParent, ref bool[string] named, ref bool[string] visited,
+        ref UnlistedRepository[] unlistedRepositories, ref Finding[] findings) const
+    {
+        import std.file : FileException;
+        import std.path : buildPath;
+
+        foreach (name; listing.directories)
+        {
+            immutable childPrefix = prefix ~ "/" ~ name;
+            immutable childDirectory = childPrefix ~ "/"; // relative to -C, "/tools/alpha/" form
+            if (childDirectory in named)
+            {
+                continue;
+            }
+            immutable childOnDisk = buildPath(onDisk, name);
+            immutable resolved = resolvePath(childOnDisk);
+            if (resolved in visited)
+            {
+                continue;
+            }
+            visited[resolved] = true;
+
+            Listing childListing;
+            try
+            {
+                childListing = listDirectory(childOnDisk);
+            }
+            catch (FileException exception)
+            {
+                findings ~= Finding(childDirectory, childOnDisk
+                    ~ ": could not list it to look for unlisted nested repos (" ~ exception.msg ~ ")", false);
+                continue;
+            }
+
+            bool isRepository;
+            if (prefix.length == 0 || childListing.hasGit) // a direct entry, or a candidate
+            {
+                const repositoryResult = checkRepository(childDirectory, childOnDisk);
+                with (RepositoryOutcome) final switch (repositoryResult.outcome)
+                {
+                case repository:
+                    isRepository = true;
+                    break;
+                case missing, notDirectory, notGitRepository, insideRepository:
+                    break;
+                }
+            }
+
+            if (isRepository && enclosingParent.readable)
+            {
+                // "/tools/alpha/" less the parent's prefix "/tools": "/alpha/"
+                immutable relativeToParent = childDirectory[enclosingParent.prefix.length .. $];
+                if (relativeToParent !in enclosingParent.listed)
+                {
+                    // No --branch or --url: what `add-nested <dir>` would record.
+                    unlistedRepositories ~= UnlistedRepository(childDirectory, childOnDisk,
+                        enclosingParent.isTop, enclosingParent.onDisk, relativeToParent,
+                        enclosingParent.isTop ? entryFor(directory, relativeToParent, "", "") : EntryResult.init);
+                }
+            }
+
+            if (childListing.hasGitIgnore)
+            {
+                addNamedIn(childOnDisk, childPrefix, named, findings);
+            }
+            walk(childOnDisk, childPrefix, childListing,
+                isRepository || childListing.hasGitRepos
+                    ? enclosingParentAt(childOnDisk, childPrefix, childListing.hasGitRepos, findings)
+                    : enclosingParent,
+                named, visited, unlistedRepositories, findings);
+        }
+    }
+
+    /// `onDisk` as the nearest enclosing parent of what is below it, with
+    /// what its .gitrepos lists (nothing if it has none). One that can't be
+    /// read is a finding, and nothing below it is reported against it.
+    private static EnclosingParent enclosingParentAt(string onDisk, string prefix, bool hasGitRepos,
+        ref Finding[] findings)
+    {
+        import std.path : buildPath;
+
+        bool[string] listed;
+        if (hasGitRepos)
+        {
+            immutable path = buildPath(onDisk, ".gitrepos");
+            try
+            {
+                foreach (gitReposEntry; new GitRepos(path).gitReposEntries)
+                {
+                    listed[gitReposEntry.directory] = true;
+                }
+            }
+            catch (Exception exception) // GitReposException, UTFException or FileException
+            {
+                findings ~= Finding(prefix ~ "/", path ~ ": could not read it, so repositories below "
+                    ~ onDisk ~ " were not checked against it (" ~ exception.msg ~ ")", false);
+                return EnclosingParent(onDisk, prefix, false, listed, false);
+            }
+        }
+        return EnclosingParent(onDisk, prefix, false, listed, true);
+    }
+
+    /// Adds to `named` what `onDisk`/.gitignore names. One that can't be
+    /// read is a finding, and the directories it names are walked into.
+    private static void addNamedIn(string onDisk, string prefix, ref bool[string] named,
+        ref Finding[] findings)
+    {
+        import std.path : buildPath;
+        import textFile : readIfExists, splitFileLines;
+
+        immutable path = buildPath(onDisk, ".gitignore");
+        try
+        {
+            bool endsWithNewline; // not needed
+            addNamed(splitFileLines(readIfExists(path), endsWithNewline), prefix, named);
+        }
+        catch (Exception exception) // UTFException or FileException
+        {
+            findings ~= Finding(prefix ~ "/", path ~ ": could not read it, so the directories it names"
+                ~ " were walked into (" ~ exception.msg ~ ")", false);
+        }
     }
 
     /**
@@ -1322,4 +1636,156 @@ unittest
     }
 
     assert(new ParentDirectory(buildPath(directory, "gone")).checkDisk.length == 0);
+}
+
+// --- checkDisk(Yes.recursive): -r ------------------------------------------------
+
+/// Item 6 with -r: the walk goes below the direct entries and into
+/// repositories, skips dot-directories and what any .gitignore names
+/// (nested ones too, each relative to its own folder), follows links
+/// without looping, and judges each repository against its nearest
+/// enclosing parent. Without -r, the same tree gives step 2's answer.
+unittest
+{
+    import std.algorithm.iteration : filter, map;
+    import std.algorithm.searching : endsWith;
+    import std.array : array;
+    import std.file : mkdirRecurse, symlink, write;
+    import gitIgnore : beginMarker, endMarker;
+    import nestedCommon : makeRemote;
+
+    immutable directory = testDirectory("parentDirectory-disk-recursive");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(directory, "gamma", "main");
+    void cloneTo(string clone)
+    {
+        git("clone", "-q", "-b", "main", remote, clone);
+        // Set origin/HEAD explicitly rather than rely on clone doing it.
+        git("-C", clone, "remote", "set-head", "origin", "main");
+    }
+    void initAt(string onDisk)
+    {
+        git("init", "-q", "-b", "main", onDisk); // no origin
+    }
+
+    immutable parent = buildPath(directory, "parent"); // a plain directory
+    // listed: in .gitrepos and the block, so not walked into.
+    initAt(buildPath(parent, "listed"));
+    git("-C", buildPath(parent, "listed"), "remote", "add", "origin", "listed.git");
+    initAt(buildPath(parent, "listed", "deep"));
+    buildPath(parent, ".gitignore").write("*.o\n" ~ beginMarker ~ "\n/listed/\n" ~ endMarker ~ "\n");
+    buildPath(parent, ".gitrepos").write("/listed/ listed.git\n");
+    // A dot-directory, at the top and deeper: never walked into.
+    initAt(buildPath(parent, ".cache", "hidden"));
+    initAt(buildPath(parent, "tools", ".hidden", "repo"));
+    // tools: a plain directory whose own .gitignore names "ignored"; a
+    // wildcard line names nothing. gamma has an origin: fixable from here.
+    cloneTo(buildPath(parent, "tools", "gamma"));
+    initAt(buildPath(parent, "tools", "ignored"));
+    initAt(buildPath(parent, "tools", "skipped"));
+    buildPath(parent, "tools", ".gitignore").write("ignored\nskip*\n");
+    parent.symlink(buildPath(parent, "tools", "loop")); // a link back to the top
+    // outer: an unlisted repo, walked into. What is inside belongs to it.
+    initAt(buildPath(parent, "outer"));
+    initAt(buildPath(parent, "outer", "inner"));
+    initAt(buildPath(parent, "outer", "sub", "deeper"));
+    // research: a plain directory with its own .gitrepos, so the nearest
+    // enclosing parent of what is below it. unlistedhere has an origin,
+    // but still isn't fixable from the top.
+    initAt(buildPath(parent, "research", "listedhere"));
+    cloneTo(buildPath(parent, "research", "unlistedhere"));
+    buildPath(parent, "research", ".gitrepos").write("/listedhere/ x.git\n");
+    // link: a link to a plain directory elsewhere, holding a repo and a
+    // link to itself.
+    immutable elsewhere = buildPath(directory, "elsewhere");
+    initAt(buildPath(elsewhere, "found"));
+    elsewhere.symlink(buildPath(elsewhere, "back"));
+    elsewhere.symlink(buildPath(parent, "link"));
+
+    auto parentDirectory = new ParentDirectory(parent);
+    const findings = parentDirectory.checkDisk(Yes.recursive);
+    assert(findings.map!(finding => finding.directory).array == ["/link/found/", "/outer/",
+        "/outer/inner/", "/outer/sub/deeper/", "/research/unlistedhere/", "/tools/gamma/",
+        "/tools/skipped/"]);
+    assert(findings.map!(finding => finding.fixable).array
+        == [false, false, false, false, false, true, false]);
+
+    // Its parent is the top: named relative to it, add-nested's hint as in step 2.
+    assert(findings[0].message == buildPath(parent, "link", "found") ~ ": /link/found/ is a git"
+        ~ " repository but is not listed in " ~ buildPath(parent, ".gitrepos")
+        ~ "; it has no origin remote, so add it with add-nested --url <url> link/found");
+    assert(findings[5].message == buildPath(parent, "tools", "gamma") ~ ": /tools/gamma/ is a git"
+        ~ " repository but is not listed in " ~ buildPath(parent, ".gitrepos"));
+    // Its parent is a repository, or a directory with a .gitrepos: named
+    // relative to that parent, and how to fix it there; -r when it's deeper.
+    assert(findings[2].message == buildPath(parent, "outer", "inner") ~ ": /inner/ is a git"
+        ~ " repository but is not listed in " ~ buildPath(parent, "outer", ".gitrepos")
+        ~ "; run check-nested -C " ~ buildPath(parent, "outer") ~ " --fix");
+    assert(findings[3].message.endsWith(": /sub/deeper/ is a git repository but is not listed in "
+        ~ buildPath(parent, "outer", ".gitrepos") ~ "; run check-nested -C "
+        ~ buildPath(parent, "outer") ~ " -r --fix"));
+    assert(findings[4].message == buildPath(parent, "research", "unlistedhere") ~ ": /unlistedhere/"
+        ~ " is a git repository but is not listed in " ~ buildPath(parent, "research", ".gitrepos")
+        ~ "; run check-nested -C " ~ buildPath(parent, "research") ~ " --fix");
+
+    // Without -r: only the direct entries, exactly as in step 2.
+    assert(parentDirectory.checkDisk.map!(finding => finding.directory).array == ["/outer/"]);
+    assert(parentDirectory.registerUnlisted().length == 0); // outer has no origin
+
+    // With -r, only the repo whose parent is the top is registered, and
+    // after that it is named by the block, so no longer reported.
+    assert(parentDirectory.registerUnlisted(Yes.recursive) == [GitReposEntry("/tools/gamma/", remote, "")]);
+    assert(parentDirectory.gitIgnore.nested == ["/listed/", "/tools/gamma/"]);
+    assert(parentDirectory.checkDisk(Yes.recursive).filter!(finding => finding.fixable).empty);
+    assert(parentDirectory.checkDisk(Yes.recursive).map!(finding => finding.directory).array
+        == ["/link/found/", "/outer/", "/outer/inner/", "/outer/sub/deeper/",
+        "/research/unlistedhere/", "/tools/skipped/"]);
+}
+
+/// Item 6 with -r: a directory that can't be listed, and a nested
+/// .gitrepos that can't be read, are findings; the walk goes on, and
+/// nothing is reported against the .gitrepos it couldn't read.
+unittest
+{
+    import std.algorithm.iteration : map;
+    import std.algorithm.searching : canFind;
+    import std.array : array;
+    import std.file : mkdirRecurse, setAttributes, write;
+    import core.sys.posix.unistd : geteuid;
+    import std.conv : octal;
+
+    immutable directory = testDirectory("parentDirectory-disk-recursive-unreadable");
+    immutable locked = buildPath(directory, "a-locked");
+    locked.mkdirRecurse;
+    git("init", "-q", "-b", "main", buildPath(locked, "inside"));
+    locked.setAttributes(0); // no permission to list it
+    scope (exit)
+    {
+        locked.setAttributes(octal!755); // so it can be removed
+        directory.rmdirRecurse;
+    }
+
+    // b-broken's .gitrepos has an entry with no url, so it won't parse.
+    git("init", "-q", "-b", "main", buildPath(directory, "b-broken", "below"));
+    buildPath(directory, "b-broken", ".gitrepos").write("/below/\n");
+    git("init", "-q", "-b", "main", buildPath(directory, "c-after")); // still reached
+
+    const findings = new ParentDirectory(directory).checkDisk(Yes.recursive);
+    if (geteuid() == 0)
+    {
+        return; // root can list a directory without permission; nothing to test
+    }
+    assert(findings.map!(finding => finding.directory).array == ["/a-locked/", "/b-broken/", "/c-after/"]);
+    assert(findings[0].message.canFind(locked ~ ": could not list it to look for unlisted nested repos ("));
+    assert(findings[1].message.canFind(buildPath(directory, "b-broken", ".gitrepos")
+        ~ ": could not read it, so repositories below " ~ buildPath(directory, "b-broken")
+        ~ " were not checked against it ("));
+    foreach (finding; findings)
+    {
+        assert(!finding.fixable);
+    }
 }
