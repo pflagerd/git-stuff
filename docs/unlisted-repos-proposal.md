@@ -1,6 +1,6 @@
 # check-nested: report nested repos that `.gitrepos` doesn't list (proposal)
 
-Status: **proposal; decisions 1-4 made, 3b and "listed" open** (see Answers). Issue:
+Status: **all decisions made; not implemented yet** (see Answers). Issue:
 [#15](https://github.com/pflagerd/git-stuff/issues/15). Builds on
 `docs/nested-repos-design.md` (`ParentDirectory.checkDisk()`) and follows the
 conventions of `docs/nested-commands-proposal.md`.
@@ -171,30 +171,33 @@ Afterwards:
      `noOrigin` or `detachedHead` is still reported, but not marked
      fixable, and the message says to run `add-nested` with `--url` or
      `--branch`.
-   - Open (3b): **where does `-r --fix` register a deeper repository?**
-     - (i) **Recommended:** only when its nearest enclosing parent (see
-       "listed" below) is the `-C` directory itself. Any other repository
-       is reported with "run `check-nested -C <that directory> --fix`", so
-       one run never writes into another repository's working tree.
-     - (ii) Always, in the nearest enclosing parent's `.gitrepos` and
-       `.gitignore`, creating them there if needed.
-
-     Today's case: `pflager.net/projects/genmitsu-jinsoku-Z3-galvo-laser`
-     belongs to `pflager.net`'s git, not the top parent's. So "listed"
-     should take the nearest enclosing directory that is a git repository
-     **or** has a `.gitrepos`, rather than only one with a `.gitrepos`.
+   - **3b. Answer (2026-11-22):** (i). `-r --fix` registers a repository
+     only when its nearest enclosing parent (see "listed" below) is the `-C`
+     directory itself. Any other repository is reported, not fixable here,
+     with "run `check-nested -C <that directory> --fix`". One run never
+     writes into another repository's working tree. That command works even
+     where the files don't exist yet, because a missing `.gitignore` or
+     `.gitrepos` reads as empty, and `--fix` creates them.
+   - Today's case: `pflager.net/projects/genmitsu-jinsoku-Z3-galvo-laser`
+     would be reported with "run `check-nested -C
+     ~/desktops/default/pflager.net --fix`".
 
 4. **Answer (2026-11-22), not the recommendation:** follow symbolic links
    (as in 1b), and skip all dot-directories, `.git` included.
 
-Still to settle:
-- **What "listed" means below the top level.** The proposal: a repository
-  counts as listed when the `.gitrepos` of the nearest enclosing directory
-  that has one lists it, with paths relative to that directory. That
-  directory need not be a git repository, as with any parent directory.
-  (Found on real data, 2026-11-22: `openai-product-explorations/deep-research/`
-  is a plain directory with its own `.gitrepos`, and "nearest enclosing
-  repository" would have reported its listed repo wrongly.)
+Rules that follow from these answers:
+- **What "listed" means below the top level.** A repository's *nearest
+  enclosing parent* is the nearest directory above it that is either a git
+  repository or has a `.gitrepos`. The repository counts as listed when
+  that parent's `.gitrepos` lists it, with the path relative to that
+  parent. Both halves of the rule come from real data on 2026-11-22:
+  - `openai-product-explorations/deep-research/` is a plain directory with
+    its own `.gitrepos`. Counting only repositories as parents would have
+    reported its listed repository wrongly.
+  - `pflager.net/projects/genmitsu-jinsoku-Z3-galvo-laser` lies inside
+    `pflager.net`'s working tree. Counting only `.gitrepos` directories as
+    parents would have made it the top parent's business, not
+    `pflager.net`'s.
 - **Consequence of 1b: hand-written lines are skipped.** Because a
   directory named by a hand-written line is skipped, a parent whose
   `.gitignore` still names its nested repos outside the managed block

@@ -7,7 +7,7 @@ gitignore-serialization and fast-forward merged into master, which closed
   "Planned work": #15 #4 #7 #18 #21. (#12 and #19, push-nested, and #20,
   result structs, are done.)
 - Next: #15, check-nested reporting git repos in the parent that .gitrepos
-  doesn't list. Proposal, with decisions still to make, in
+  doesn't list. Proposal, all decisions made, in
   docs/unlisted-repos-proposal.md.
 - e501a81 deleted the Python scripts, the bash helpers other than
   bin/ls-repos, and the prebuilt binaries. Issues #1 #11 #14 #16 #17 were
