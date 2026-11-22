@@ -270,7 +270,9 @@ repos they list on disk (missing, not a repository, no remote with the
 listed url). It never uses the network, and prints nothing when there's
 nothing to report. With `--fix` it repairs what it can, writes both files,
 and prints `fixed N problem(s)`. `--no-check` is bad usage here (exit
-status 2), since checking is all `check-nested` does.
+status 2), since checking is all `check-nested` does. The message names
+the `-r` and `-f` you gave with it (or only `--fix`, if you gave that
+too).
 
 It also reports each git repository directly in the parent directory that
 `.gitrepos` doesn't list. `--fix` registers it, as `add-nested <dir>` would
@@ -301,6 +303,15 @@ each one, counting them in `fixed N problem(s)`:
   subdirectory there), so one run never writes into another repository's
   files. A directory it can't list, or a nested `.gitrepos` it can't read,
   is a warning, and the walk goes on.
+- **`-f` / `--force`, with `-r`,** also walks into the directories that a
+  `.gitignore` line names, listed repositories included. Such a directory
+  is still not reported itself, but the repositories inside it are, by the
+  same nearest-enclosing-parent rule. So `check-nested -r -f` finds a
+  repository you put inside `/household/`, and one inside a listed
+  repository that its `.gitrepos` doesn't list. When the walk had to go
+  through a named directory to reach it, the warning's suggested command
+  says `-r -f` too. Without `-r`, `-f` has no effect, and you get a
+  warning saying so.
 - **`--fix` can't register** a repository with no `origin` remote, or one
   on a detached HEAD. The warning stays, and says to use `add-nested --url`
   or `add-nested --branch`. Registering doesn't use the network either, so

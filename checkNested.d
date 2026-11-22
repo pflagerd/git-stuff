@@ -7,7 +7,11 @@
  * (ParentDirectory.registerUnlisted()). With -r/--recursive, the search
  * for unlisted repositories goes below the direct subdirectories
  * (ParentDirectory.checkDisk(Yes.recursive)); --fix then registers only
- * those whose nearest enclosing parent is the -C directory.
+ * those whose nearest enclosing parent is the -C directory. With -f/--force
+ * as well, the walk also goes into the directories that .gitignore lines
+ * name (checkDisk(Yes.recursive, Yes.force)): those are still not
+ * reported, but repositories inside them are. -f without -r only gets a
+ * warning, since without -r there is no walk for it to change.
  *
  * Design: docs/nested-commands-proposal.md
  */
@@ -19,7 +23,7 @@ import nestedCommon : CommonOptions, ExitStatus, loadParent, parseOptions, print
     reportNoCheckConflict;
 import parentDirectory : ParentDirectory;
 
-enum usage = "Usage: check-nested [-C <directory>] [-r] [--fix]
+enum usage = "Usage: check-nested [-C <directory>] [-r [-f]] [--fix]
 
 Reports problems with .gitignore, .gitrepos and the nested repos they
 list, and git repositories in the directory that .gitrepos doesn't list.
@@ -29,8 +33,11 @@ remote and a current branch. With -r, looks below the direct
 subdirectories too, except in directories whose name starts with . or
 that a .gitignore line names; a repository found there belongs to the
 nearest directory above it that is a git repository or has a .gitrepos,
-and --fix registers it only when that is this directory. --no-check is
-refused, since checking is all check-nested does. Exit status: 0 no
+and --fix registers it only when that is this directory. With -r -f, also
+looks inside the directories that a .gitignore line names; such a
+directory is still not reported itself, but repositories inside it are.
+-f without -r has no effect. --no-check is refused, since checking is all
+check-nested does. Exit status: 0 no
 problems, 1 problems remain, 2 bad usage or a file that can't be read.
 ";
 
@@ -49,18 +56,29 @@ ExitStatus run(string[] args, File output, File errors)
 
     CommonOptions commonOptions;
     bool recursive;
+    bool force;
     const parsed = parseOptions(args, commonOptions, output, errors, usage,
-        "recursive|r", "Look below the direct subdirectories too.", &recursive);
+        "recursive|r", "Look below the direct subdirectories too.", &recursive,
+        "force|f", "With -r, also look inside the directories that .gitignore names.", &force);
     if (!parsed.proceed)
     {
         return parsed.exitStatus;
     }
     // #29 decision 12: with the checks off, check-nested has nothing left
-    // to do. parseOptions has already refused --no-check --fix; -r is
-    // check-nested's own option, so it is named here.
+    // to do. parseOptions has already refused --no-check --fix; -r and -f
+    // are check-nested's own options, so they are named here.
     if (commonOptions.noCheck)
     {
-        reportNoCheckConflict("check-nested", recursive ? ["-r/--recursive"] : [], errors);
+        string[] ownCheckOptions;
+        if (recursive)
+        {
+            ownCheckOptions ~= "-r/--recursive";
+        }
+        if (force)
+        {
+            ownCheckOptions ~= "-f/--force";
+        }
+        reportNoCheckConflict("check-nested", ownCheckOptions, errors);
         errors.writeln("check-nested: --no-check leaves nothing to do: checking is all check-nested does");
         return ExitStatus.usage;
     }
@@ -68,6 +86,13 @@ ExitStatus run(string[] args, File output, File errors)
     {
         errors.writeln("check-nested: unexpected argument '", args[1], "'");
         return ExitStatus.usage;
+    }
+    // The proposal's answer 1b: -f without -r has no effect, because the
+    // default mode doesn't walk. It is not refused, but she is told, in
+    // case she meant -r -f. The exit status doesn't change.
+    if (force && !recursive)
+    {
+        errors.writeln("check-nested: warning: -f/--force has no effect without -r/--recursive");
     }
 
     ParentDirectory parentDirectory;
@@ -80,7 +105,8 @@ ExitStatus run(string[] args, File output, File errors)
     {
         immutable fixable = parentDirectory.check.filter!(finding => finding.fixable).count;
         // Registered first, so fix() then sorts them into both files.
-        const gitReposEntries = parentDirectory.registerUnlisted(recursive ? Yes.recursive : No.recursive);
+        const gitReposEntries = parentDirectory.registerUnlisted(recursive ? Yes.recursive : No.recursive,
+            force ? Yes.force : No.force);
         parentDirectory.fix();
         try
         {
@@ -106,7 +132,8 @@ ExitStatus run(string[] args, File output, File errors)
     }
 
     immutable remaining = printFindings(parentDirectory.check
-        ~ parentDirectory.checkDisk(recursive ? Yes.recursive : No.recursive), errors);
+        ~ parentDirectory.checkDisk(recursive ? Yes.recursive : No.recursive, force ? Yes.force : No.force),
+        errors);
     return remaining ? ExitStatus.findings : ExitStatus.ok;
 }
 
@@ -352,6 +379,95 @@ unittest
     assert(text[0] == "" && text[1] == "");
 }
 
+/// -r -f: repos inside directories that .gitignore names are reported,
+/// the named directories themselves are not. --fix -r -f registers only
+/// the one whose nearest enclosing parent is the -C directory; the one
+/// inside a listed repo keeps its "run check-nested -C <that repo>" hint.
+/// -f without -r changes nothing but gets a warning.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import nestedCommon : makeRemote;
+
+    immutable scratch = testDirectory("checkNested-force");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(scratch, "secret", "main");
+    void cloneTo(string clone)
+    {
+        git("clone", "-q", "-b", "main", remote, clone);
+        git("-C", clone, "remote", "set-head", "origin", "main"); // not left to clone
+    }
+    immutable parent = buildPath(scratch, "parent");
+    nestedRepo(parent, "alpha", "a.git");                      // listed, so named by the block
+    cloneTo(buildPath(parent, "alpha", "inner"));              // alpha's business
+    immutable secret = buildPath(parent, "private", "secret"); // private: named by hand
+    cloneTo(secret);
+    immutable ignoreText = "/private/
+" ~ beginMarker ~ "
+/alpha/
+" ~ endMarker ~ "
+";
+    buildPath(parent, ".gitignore").write(ignoreText);
+    buildPath(parent, ".gitrepos").write("/alpha/ a.git
+");
+
+    immutable innerWarning = "warning: " ~ buildPath(parent, "alpha", "inner") ~ ": /inner/ is a git"
+        ~ " repository but is not listed in " ~ buildPath(parent, "alpha", ".gitrepos")
+        ~ "; run check-nested -C " ~ buildPath(parent, "alpha") ~ " --fix
+";
+    immutable noEffect = "check-nested: warning: -f/--force has no effect without -r/--recursive
+";
+
+    string[2] text;
+    assert(checkNested(scratch, parent, ["-r"], text) == 0); // without -f, named directories are skipped
+    assert(text[0] == "" && text[1] == "");
+
+    foreach (force; ["-f", "--force"])
+    {
+        assert(checkNested(scratch, parent, ["-r", force], text) == 1, force);
+        assert(text[0] == "", force);
+        assert(text[1] == innerWarning ~ "warning: " ~ secret ~ ": /private/secret/ is a git"
+            ~ " repository but is not listed in " ~ buildPath(parent, ".gitrepos")
+            ~ " (fixable with --fix)
+", text[1]);
+        // Without -r: no walk, so nothing more is found; only the warning.
+        assert(checkNested(scratch, parent, [force], text) == 0, force);
+        assert(text[0] == "" && text[1] == noEffect, text[1]);
+    }
+    assert(checkNested(scratch, parent, ["-f", "--fix"], text) == 0); // registers nothing
+    assert(text[0] == "" && text[1] == noEffect, text[1]);
+    assert(buildPath(parent, ".gitignore").readText == ignoreText);
+
+    assert(checkNested(scratch, parent, ["-r", "-f", "--fix"], text) == 1); // alpha's inner remains
+    assert(text[0] == "added /private/secret/ " ~ remote ~ "
+fixed 1 problem(s)
+", text[0]);
+    assert(text[1] == innerWarning, text[1]);
+    assert(buildPath(parent, ".gitrepos").readText == "/alpha/ a.git
+/private/secret/ " ~ remote ~ "
+");
+    assert(buildPath(parent, ".gitignore").readText
+        == "/private/
+" ~ beginMarker ~ "
+/alpha/
+/private/secret/
+" ~ endMarker ~ "
+");
+    assert(!buildPath(parent, "alpha", ".gitrepos").exists); // another repo's files: untouched
+    assert(!buildPath(parent, "alpha", ".gitignore").exists);
+
+    // Running it where the warning says fixes the rest.
+    assert(checkNested(scratch, buildPath(parent, "alpha"), ["--fix"], text) == 0, text[1]);
+    // "main" is recorded because "inner" isn't the name git clone would pick for secret.git.
+    assert(text[0] == "added /inner/ " ~ remote ~ " main\nfixed 1 problem(s)\n", text[0]);
+    assert(checkNested(scratch, parent, ["-r", "-f"], text) == 0, text[1]);
+    assert(text[0] == "" && text[1] == "");
+}
+
 /// A file that won't parse: exit 2, message naming the file and line.
 unittest
 {
@@ -387,6 +503,7 @@ unittest
     string[2] text;
     assert(checkNested(scratch, scratch, ["--help"], text) == 0);
     assert(text[0].canFind("Usage: check-nested"));
+    assert(text[0].canFind("--recursive") && text[0].canFind("--force"));
     assert(checkNested(scratch, scratch, ["extra"], text) == 2);
     assert(text[1].canFind("unexpected argument 'extra'"));
     assert(checkNested(scratch, scratch, ["--nonsense"], text) == 2);
@@ -422,6 +539,15 @@ unittest
         assert(text[1] == "check-nested: --no-check can't be used with -r/--recursive: with the"
             ~ " checks off, there is nothing for it to do\n" ~ nothingToDo, text[1]);
     }
+    foreach (force; ["-f", "--force"])
+    {
+        assert(checkNested(scratch, parent, ["--no-check", force], text) == 2, force);
+        assert(text[0] == "" && text[1] == "check-nested: --no-check can't be used with -f/--force: with"
+            ~ " the checks off, there is nothing for it to do\n" ~ nothingToDo, text[1]);
+    }
+    assert(checkNested(scratch, parent, ["-f", "--no-check", "-r"], text) == 2);
+    assert(text[1] == "check-nested: --no-check can't be used with -r/--recursive, -f/--force: with"
+        ~ " the checks off, there is nothing for them to do\n" ~ nothingToDo, text[1]);
 
     assert(checkNested(scratch, parent, ["--fix", "--no-check"], text) == 2);
     assert(text[1].canFind("--no-check can't be used with --fix"), text[1]);
