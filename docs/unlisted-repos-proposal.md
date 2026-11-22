@@ -120,11 +120,17 @@ The tests go in `parentDirectory.d`'s `checkDisk()` unittests, using a
 scratch parent with:
 - a listed repo;
 - an unlisted repo;
-- an unlisted repo named by a hand-written `.gitignore` line (decision 2);
+- an unlisted repo named by a `.gitignore` line outside the block, and one
+  named inside it (decision 2: neither reported);
 - a plain directory;
 - a file;
-- a symlink to a repo;
-- for 1(b) or 1(c), a deeper repo.
+- a dot-directory holding a repo (never reported);
+- a symlink to a repo, and a symlink loop;
+- for `-r`, an unlisted repo inside a plain directory, one inside an
+  unlisted repo, and one inside a named directory (reported only with
+  `-f`);
+- a plain directory with its own `.gitrepos` (it becomes the nearest
+  enclosing parent).
 
 As `CLAUDE.md` requires, these tests must not depend on git defaults. They
 need only `git init`, and they assert on `Finding.directory` and the message.
@@ -144,21 +150,34 @@ Afterwards:
    `-r` / `--recursive` to search deeper (1(b), as an option). How the
    recursive walk behaves is decision 1b.
 
-1b. **Answer (2026-11-22), not the recommendation:**
-   - **Recurse into every git repository, listed or not.** Finding one
-     doesn't stop the walk.
+1b. **Answer (2026-11-22, revised the same day), not the recommendation:**
+   - **Finding a git repository doesn't stop the walk.** It goes on into
+     every repository unless the next rule skips it.
+   - **Skip a directory that any `.gitignore` line names, inside the managed
+     block or outside it.** Skipped means not reported and not walked into.
+     This applies to the parent's `.gitignore` and to every nested
+     `.gitignore` the walk meets. Each line names a directory relative to
+     its own `.gitignore`'s folder, using `looseDirectory()`'s rule, so
+     wildcard lines don't name directories. Because the managed block
+     names every listed repository, `-r` doesn't walk into listed
+     repositories.
+   - **`-f` / `--force`, with `-r`:** walk into the skipped directories as
+     well. A named directory is still not reported itself, but unlisted
+     repositories found inside it are. `-f` is wanted even though it sits
+     close to `--fix`, which has no short form. `--force` without `-r` has
+     no effect, because the default mode doesn't walk.
    - **Follow symbolic links.** (Not part of the answer, but needed: the
      walk remembers each directory's resolved path and doesn't enter one
      twice, so links can't loop.)
-   - **Don't descend into a directory that a hand-written `.gitignore`
-     line names.** That means a line outside the managed block, in the
-     parent's `.gitignore` or in any nested `.gitignore` the walk meets.
-     Each line names a directory relative to its own `.gitignore`'s folder,
-     using `looseDirectory()`'s rule; wildcard lines don't stop the walk.
    - **Skip every directory whose name starts with `.`.**
 
-2. **Answer (2026-11-22):** 2(a). A directory named by a hand-written
-   `.gitignore` line is not reported, and (from 1b) not descended into.
+   The first version said to skip only directories named by hand-written
+   lines (outside the block), and to walk into every repository, listed or
+   not. The revision treats every `.gitignore` line the same.
+
+2. **Answer (2026-11-22, revised):** a directory named by any `.gitignore`
+   line, in the managed block or not, is not reported (from 1b). So
+   `/household/`, named by a hand-written line, is not reported.
 
 3. **Answer (2026-11-22):** 3(b). `--fix` registers unlisted
    repositories, as `add-nested <dir>` would, reusing `entryFor()` in
@@ -198,18 +217,18 @@ Rules that follow from these answers:
     `pflager.net`'s working tree. Counting only `.gitrepos` directories as
     parents would have made it the top parent's business, not
     `pflager.net`'s.
-- **Consequence of 1b: hand-written lines are skipped.** Because a
-  directory named by a hand-written line is skipped, a parent whose
-  `.gitignore` still names its nested repos outside the managed block
-  (before `--fix`) has those repos skipped, not walked.
+- **`--fix` doesn't change what `-r` walks.** Since every `.gitignore`
+  line counts, moving lines into the managed block changes nothing.
 
 Simulated on `~/desktops/default` on 2026-11-22, with a throwaway program
-applying the answers above:
-- **Default (direct children):** 7 unlisted repositories, in about 0.0 s.
-- **`-r`, today's files:** the same 7. The walk visited 44,713 directories
-  in about 4 s, but went into none of the 62 listed repositories, because
-  the top `.gitignore` still names them by hand.
-- **`-r`, after `--fix`:** 8, adding
-  `pflager.net/projects/genmitsu-jinsoku-Z3-galvo-laser`, which is a
-  repository inside `pflager.net` that is neither listed nor ignored there.
-  The walk visited 54,585 directories in about 10 s.
+applying the revised answers:
+- **Default (direct children):** 7 unlisted repositories, instantly:
+  `chromium`, `claude-stuff`, `countdown-timer`, `markdown-viewer`,
+  `markdown-wysiwyg-editor`, `pwa-template` and `terminal`.
+- **`-r`:** the same 7. The walk visited 44,713 directories in about 5 s.
+- **`-r -f`:** 8, adding `pflager.net/projects/genmitsu-jinsoku-Z3-galvo-laser`
+  (nearest enclosing parent `pflager.net`), which is neither listed nor
+  ignored there. The walk visited 68,033 directories in about 8 s.
+
+The simulation finds repositories by the presence of `.git`, not by
+`checkRepository()`, so the real check may differ in edge cases.
