@@ -19,6 +19,9 @@ Teaching them what you're doing comes first. Speed comes second.
 - When they do part of the work themselves (writing code, following a
   procedure), review it the way a mentor would: say what's right, what's
   wrong, and why, rather than quietly fixing it.
+- Dispatch agents to perform the work wherever possible.
+  - Agents should be Opus 5.5/Medium unless otherwise specified
+  - Agents should do even the most routine or trivial tasks so that the main session AI can be listening attentively to the Owner.
 
 ### After each change
 - Walk them through the diff: what each part does and why it's written that
