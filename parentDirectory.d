@@ -12,6 +12,10 @@ import core.attribute : mustuse;
 import finding : Finding;
 import gitIgnore : GitIgnore;
 import gitRepos : GitRepos, GitReposEntry;
+// nestedCommon imports this module too. D allows such a cycle; it only
+// refuses one between modules that both have static constructors, and
+// neither has any. https://dlang.org/spec/module.html#order_of_static_ctor
+import nestedCommon : entryFor, EntryOutcome, EntryResult;
 
 /// What ParentDirectory.checkRepository found at a path.
 enum RepositoryOutcome
@@ -29,6 +33,15 @@ enum RepositoryOutcome
 {
     RepositoryOutcome outcome;
     string message; /// "" when outcome is repository
+}
+
+/// A nested repo in the parent that .gitrepos doesn't list (checkDisk()
+/// item 6), and the entry `add-nested <dir>` would record for it.
+private struct UnlistedRepository
+{
+    string directory;        /// "/alpha/" form
+    string onDisk;           /// its path, for messages
+    EntryResult entryResult; /// found: registerUnlisted() can register it; otherwise why not
 }
 
 class ParentDirectory
@@ -186,9 +199,9 @@ class ParentDirectory
 
     /**
      * Problems on disk: with the nested repos .gitrepos lists, and nested
-     * repos it doesn't list. None is fixable: a missing clone is
-     * pull-nested's job, and the rest need her judgement. check() never
-     * touches the disk; this always does.
+     * repos it doesn't list. Only item 6 can be fixable: a missing clone is
+     * pull-nested's job, and items 1-5 need her judgement. check() never
+     * touches the disk; this always does. Nothing is changed.
      *
      * For each distinct directory in .gitrepos, in file order, the first
      * problem found:
@@ -209,7 +222,11 @@ class ParentDirectory
      *    (looseDirectory()), so a hand-written `/household/` keeps a
      *    private repo quiet. Symbolic links are followed, so a link to a
      *    repo is reported; files and dangling links are not. Only direct
-     *    entries are looked at, not deeper ones.
+     *    entries are looked at, not deeper ones. Fixable when entryFor()
+     *    works out its entry as `add-nested <dir>` would (registerUnlisted()
+     *    does the fixing, not fix()); not fixable when it has no origin
+     *    remote, a detached HEAD, or an entry .gitrepos would refuse, and
+     *    the message says which add-nested option she needs.
      *
      * Git is run with an argument list, never through a shell, so names
      * with spaces are safe.
@@ -246,15 +263,93 @@ class ParentDirectory
             }
         }
 
-        return findings ~ unlistedRepositories(seen);
+        return findings ~ unlistedFindings(seen);
     }
 
     /**
-     * checkDisk()'s item 6: a finding for each direct entry of the parent
-     * that is a nested repo but is neither in `listed` (the .gitrepos
-     * directories) nor named by a .gitignore line, in name order.
+     * checkDisk()'s item 6: a finding for each unlisted nested repo (see
+     * unlistedRepositories()), fixable when entryFor() can work out its
+     * entry, so registerUnlisted() would register it. Otherwise the message
+     * says what add-nested needs to be given.
      */
-    private Finding[] unlistedRepositories(const bool[string] listed) const
+    private Finding[] unlistedFindings(const bool[string] listed) const
+    {
+        Finding[] findings;
+        foreach (unlistedRepository; unlistedRepositories(listed, findings))
+        {
+            // the name add-nested takes, relative to the parent: "/alpha/" -> "alpha"
+            immutable name = unlistedRepository.directory[1 .. $ - 1];
+            immutable notListed = unlistedRepository.onDisk ~ ": " ~ unlistedRepository.directory
+                ~ " is a git repository but is not listed in " ~ _gitRepos.path;
+            const entryResult = unlistedRepository.entryResult;
+            with (EntryOutcome) final switch (entryResult.outcome)
+            {
+            case found:
+                findings ~= Finding(unlistedRepository.directory, notListed, true);
+                break;
+            case noOrigin:
+                findings ~= Finding(unlistedRepository.directory, notListed
+                    ~ "; it has no origin remote, so add it with add-nested --url <url> " ~ name, false);
+                break;
+            case detachedHead:
+                findings ~= Finding(unlistedRepository.directory, notListed
+                    ~ "; it has no current branch (detached HEAD), so add it with"
+                    ~ " add-nested --branch <branch> " ~ name, false);
+                break;
+            case badDirectoryArgument, notRepository, invalidEntry:
+                findings ~= Finding(unlistedRepository.directory, notListed
+                    ~ "; add-nested can't register it as it is: " ~ entryResult.message, false);
+                break;
+            }
+        }
+        return findings;
+    }
+
+    /**
+     * Registers, with add(), each nested repo that checkDisk() item 6 marks
+     * fixable, with the entry entryFor() works out for it: the url of
+     * `origin`, and the branch by add-nested's rule, as `add-nested <dir>`
+     * would record it. The others are left for checkDisk() to report.
+     *
+     * Unlike fix(), this reads the disk (local git state only, never the
+     * network), so only check-nested --fix calls it; the other commands'
+     * --fix stay in memory. Nothing is written until write().
+     *
+     * Returns: the entries registered, in name order.
+     */
+    GitReposEntry[] registerUnlisted()
+    {
+        bool[string] listed; // the .gitrepos directories, "/alpha/" form
+        foreach (gitReposEntry; _gitRepos.gitReposEntries)
+        {
+            listed[gitReposEntry.directory] = true;
+        }
+
+        Finding[] listingFindings; // a directory that can't be listed; checkDisk() reports it
+        GitReposEntry[] gitReposEntries;
+        foreach (unlistedRepository; unlistedRepositories(listed, listingFindings))
+        {
+            with (EntryOutcome) final switch (unlistedRepository.entryResult.outcome)
+            {
+            case found:
+                add(unlistedRepository.entryResult.gitReposEntry);
+                gitReposEntries ~= unlistedRepository.entryResult.gitReposEntry;
+                break;
+            case badDirectoryArgument, notRepository, noOrigin, detachedHead, invalidEntry:
+                break; // not fixable; checkDisk() reports it
+            }
+        }
+        return gitReposEntries;
+    }
+
+    /**
+     * The direct entries of the parent that are nested repos but are
+     * neither in `listed` (the .gitrepos directories) nor named by a
+     * .gitignore line, in name order, each with what entryFor() made of
+     * it. A problem listing the directory is appended to `findings`.
+     */
+    private UnlistedRepository[] unlistedRepositories(const bool[string] listed,
+        ref Finding[] findings) const
     {
         import std.algorithm.iteration : map;
         import std.algorithm.sorting : sort;
@@ -288,12 +383,13 @@ class ParentDirectory
         }
         catch (FileException exception)
         {
-            return [Finding("", directory ~ ": could not list it to look for unlisted nested repos ("
-                ~ exception.msg ~ ")", false)];
+            findings ~= Finding("", directory ~ ": could not list it to look for unlisted nested repos ("
+                ~ exception.msg ~ ")", false);
+            return [];
         }
         names.sort();
 
-        Finding[] findings;
+        UnlistedRepository[] unlistedRepositories;
         foreach (name; names)
         {
             if (name[0] == '.')
@@ -327,15 +423,15 @@ class ParentDirectory
             with (RepositoryOutcome) final switch (repositoryResult.outcome)
             {
             case repository:
-                findings ~= Finding(nestedDirectory, onDisk ~ ": " ~ nestedDirectory
-                    ~ " is a git repository but is not listed in " ~ _gitRepos.path
-                    ~ " (add it with add-nested)", false);
+                // No --branch or --url: what `add-nested <name>` would record.
+                unlistedRepositories ~= UnlistedRepository(nestedDirectory, onDisk,
+                    entryFor(directory, nestedDirectory, "", ""));
                 break;
             case missing, notDirectory, notGitRepository, insideRepository:
                 break; // not a nested repo, so nothing to register
             }
         }
-        return findings;
+        return unlistedRepositories;
     }
 
     /**
@@ -1121,12 +1217,73 @@ unittest
 
     const findings = new ParentDirectory(parent).checkDisk;
     assert(findings.map!(finding => finding.directory).array == ["/link/", "/unlisted/"]);
+    // Neither has an origin remote, so neither is fixable (see the next test).
     assert(findings[1].message == buildPath(parent, "unlisted") ~ ": /unlisted/ is a git repository"
-        ~ " but is not listed in " ~ buildPath(parent, ".gitrepos") ~ " (add it with add-nested)");
+        ~ " but is not listed in " ~ buildPath(parent, ".gitrepos")
+        ~ "; it has no origin remote, so add it with add-nested --url <url> unlisted");
     foreach (finding; findings)
     {
         assert(!finding.fixable);
     }
+}
+
+/// Item 6: fixable exactly when entryFor() works out the entry, and
+/// registerUnlisted() registers those, in memory, as add-nested would:
+/// origin's url, and the branch left out only by add-nested's rule.
+unittest
+{
+    import std.algorithm.iteration : map;
+    import std.algorithm.searching : canFind, endsWith;
+    import std.array : array;
+    import std.file : exists;
+    import nestedCommon : makeRemote;
+
+    immutable directory = testDirectory("parentDirectory-disk-unlisted-fixable");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    // The remote's default branch is main; it also has dev.
+    immutable remote = makeRemote(directory, "alpha", "main", "dev");
+    immutable parent = buildPath(directory, "parent");
+    void cloneOn(string name, string branch)
+    {
+        immutable clone = buildPath(parent, name);
+        git("clone", "-q", "-b", branch, remote, clone);
+        // Set origin/HEAD explicitly rather than rely on clone doing it.
+        git("-C", clone, "remote", "set-head", "origin", "main");
+    }
+    cloneOn("alpha", "main");    // named like the url, on the default: branch left out
+    cloneOn("beta", "dev");      // another name and branch: branch recorded
+    cloneOn("detached", "main"); // no current branch
+    git("-C", buildPath(parent, "detached"), "checkout", "-q", "--detach");
+    git("init", "-q", "-b", "main", buildPath(parent, "lonely")); // no origin
+    git("init", "-q", "-b", "main", buildPath(parent, "odd"));    // a url .gitrepos refuses
+    git("-C", buildPath(parent, "odd"), "remote", "add", "origin", "https://example.com//odd.git");
+
+    auto parentDirectory = new ParentDirectory(parent);
+    const findings = parentDirectory.checkDisk;
+    assert(findings.map!(finding => finding.directory).array
+        == ["/alpha/", "/beta/", "/detached/", "/lonely/", "/odd/"]);
+    assert(findings.map!(finding => finding.fixable).array == [true, true, false, false, false]);
+    assert(findings[0].message.endsWith(" is not listed in " ~ buildPath(parent, ".gitrepos")));
+    assert(findings[2].message.endsWith("; it has no current branch (detached HEAD), so add it"
+        ~ " with add-nested --branch <branch> detached"));
+    assert(findings[3].message.endsWith("; it has no origin remote, so add it with add-nested --url <url> lonely"));
+    assert(findings[4].message.canFind("; add-nested can't register it as it is: ")
+        && findings[4].message.canFind("odd.git"));
+
+    const gitReposEntries = parentDirectory.registerUnlisted();
+    assert(gitReposEntries == [GitReposEntry("/alpha/", remote, ""), GitReposEntry("/beta/", remote, "dev")]);
+    assert(parentDirectory.gitRepos.gitReposEntries == gitReposEntries); // both files, in step
+    assert(parentDirectory.gitIgnore.nested == ["/alpha/", "/beta/"]);
+    assert(!buildPath(parent, ".gitrepos").exists && !buildPath(parent, ".gitignore").exists);
+
+    // Registered ones are no longer reported; the others still are.
+    assert(parentDirectory.checkDisk.map!(finding => finding.directory).array
+        == ["/detached/", "/lonely/", "/odd/"]);
+    assert(parentDirectory.check.length == 0);
 }
 
 /// Item 6: a .gitignore line names a directory in any slash form, and only

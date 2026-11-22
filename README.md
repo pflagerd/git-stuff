@@ -40,8 +40,9 @@ bin/check-nested -C ~/Desktop --fix
    another machine) and fast-forwards the rest.
 5. `push-nested` pushes each nested repo's current branch to all its
    remotes.
-6. `check-nested --fix` repairs what it can in `.gitignore` and `.gitrepos`
-   and reports anything else.
+6. `check-nested --fix` repairs what it can in `.gitignore` and `.gitrepos`,
+   registers clones in `~/Desktop` that `.gitrepos` doesn't list yet, and
+   reports anything else.
 
 Without `-C`, each command works in the current directory.
 
@@ -262,7 +263,10 @@ nothing to report. With `--fix` it repairs what it can, writes both files,
 and prints `fixed N problem(s)`.
 
 It also reports each git repository directly in the parent directory that
-`.gitrepos` doesn't list, so you can register it with `add-nested`:
+`.gitrepos` doesn't list. `--fix` registers it, as `add-nested <dir>` would
+(the url of `origin`, and the branch only when `add-nested` would record
+it), and prints `added /<dir>/ <url>` (and the branch, if recorded) for
+each one, counting them in `fixed N problem(s)`:
 
 - **Not reported:** a directory that any `.gitignore` line names, inside the
   managed block or outside it, in any slash form (`household`,
@@ -271,8 +275,10 @@ It also reports each git repository directly in the parent directory that
 - **Also not reported:** names starting with `.`, and anything that isn't a
   directory. A symbolic link to a repository is reported.
 - **Only direct subdirectories** are looked at, not deeper ones.
-- **`--fix` doesn't fix this one yet** (planned in
-  [#15](https://github.com/pflagerd/git-stuff/issues/15)).
+- **`--fix` can't register** a repository with no `origin` remote, or one
+  on a detached HEAD. The warning stays, and says to use `add-nested --url`
+  or `add-nested --branch`. Registering doesn't use the network either, so
+  the branch rule works from `origin`'s branches as of your last fetch.
 
 ### `remove-nested <nested directory>...`
 

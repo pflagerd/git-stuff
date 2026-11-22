@@ -541,6 +541,28 @@ unittest
     assert(files(parent)[1] == beginMarker ~ "\n/alpha/\n/gamma/\n" ~ endMarker ~ "\n");
 }
 
+/// --fix doesn't register an unlisted nested repo it wasn't given: only
+/// check-nested --fix does that (#15).
+unittest
+{
+    immutable scratch = testDirectory("addNested-fix-unlisted");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(scratch, "alpha", "main");
+    immutable parent = buildPath(scratch, "parent");
+    git("clone", "-q", "-b", "main", remote, buildPath(parent, "alpha"));
+    git("clone", "-q", "-b", "main", remote, buildPath(parent, "beta")); // unlisted, fixable
+    git("-C", buildPath(parent, "alpha"), "remote", "set-head", "origin", "main");
+    git("-C", buildPath(parent, "beta"), "remote", "set-head", "origin", "main");
+
+    string[2] text;
+    assert(addNested(scratch, parent, ["--fix", "alpha"], text) == 0, text[1]);
+    assert(files(parent) == ["/alpha/ " ~ remote ~ "\n", beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n"]);
+}
+
 /// Usage: no directory, an unknown option, --help; a malformed file changes nothing.
 unittest
 {
