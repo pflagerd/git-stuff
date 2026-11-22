@@ -255,7 +255,7 @@ but it costs nothing and is already correct if she later runs `git init`.
 | `remove(directory)` | Removes the directory from both (normalized, so `"alpha"` works); returns whether either file had it. **Never touches the directory on disk.** Deleting is the one irreversible action here, and it stays out of this class. |
 | `check()` | Returns a list of findings; prints nothing |
 | `fix()` | Repairs, in memory, everything `check()` marks fixable: builds a new `GitIgnore` without the loose lines (every other line kept exactly) and with their directories in the block; adds `.gitrepos` directories missing from the block; sorts and de-duplicates the block and sorts `.gitrepos`. Returns `check()` afterwards: the findings she still has to deal with, none fixable. Nothing is written until `write()`. |
-| `registerUnlisted()` | `add()`s each unlisted nested repo that `checkDisk()` marks fixable, with the entry `entryFor()` works out (#15). Unlike `fix()` it reads the disk (local git state only), so only `check-nested --fix` calls it. Returns the entries added. Nothing is written until `write()`. |
+| `registerUnlisted(recursive)` | `add()`s each unlisted nested repo that `checkDisk(recursive)` marks fixable, with the entry `entryFor()` works out (#15). With `Yes.recursive` (`-r`), only those whose nearest enclosing parent is this directory. Unlike `fix()` it reads the disk (local git state only), so only `check-nested --fix` calls it. Returns the entries added. Nothing is written until `write()`. |
 | `write()` | Writes `.gitrepos` then `.gitignore`, each atomically |
 
 The pair of writes is not atomic: a crash between them can leave the files
@@ -340,6 +340,18 @@ local repositories in a temp directory (no network or SSH key needed).
   `check-nested --fix` then registers it with `registerUnlisted()`. Not
   fixable with no `origin`, a detached HEAD, or an entry `.gitrepos` would
   refuse. Design: `docs/unlisted-repos-proposal.md`.
+  With `checkDisk(Yes.recursive)` (`check-nested -r`) the search goes below
+  the direct entries, into repositories too, skipping dot-directories and
+  any directory a `.gitignore` line names (nested `.gitignore` files
+  included, each relative to its own folder). It follows symbolic links
+  and remembers each directory's resolved path, so it enters none twice.
+  Each repository is judged against its *nearest enclosing parent*, the
+  nearest directory above it that is a git repository or has a
+  `.gitrepos`; only one whose parent is the `-C` directory can be
+  fixable, and `registerUnlisted(Yes.recursive)` registers only those.
+  Below the direct entries, git is asked only about directories with a
+  `.git` entry, so a walk of tens of thousands of directories runs a
+  handful of git processes.
 - Further criteria: TBD.
 
 ### `--fix` and exit status
