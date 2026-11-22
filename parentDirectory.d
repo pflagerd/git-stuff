@@ -53,6 +53,10 @@ private struct UnlistedRepository
     /// registerUnlisted() can register it), or why not. Otherwise it is
     /// left at its .init, which reads as found, so check parentIsTop first.
     EntryResult entryResult;
+    /// Whether the walk reached it only by entering a directory that a
+    /// .gitignore line names (-f), below its nearest enclosing parent, so
+    /// running check-nested there needs -f too.
+    bool belowNamed;
 }
 
 class ParentDirectory
@@ -236,6 +240,10 @@ class ParentDirectory
      *    entries are looked at, unless `recursive` is Yes.recursive (-r):
      *    then the walk goes deeper, and a repository is judged against
      *    its nearest enclosing parent (see unlistedRepositoriesRecursive()).
+     *    With `force` (-f) as well, the walk also goes into the directories
+     *    that .gitignore lines name; those are still not reported
+     *    themselves, but repositories inside them are. Without
+     *    `recursive`, `force` changes nothing: there is no walk.
      *    Fixable when that parent is this directory and entryFor()
      *    works out its entry as `add-nested <dir>` would (registerUnlisted()
      *    does the fixing, not fix()); not fixable when it has no origin
@@ -247,7 +255,7 @@ class ParentDirectory
      * Git is run with an argument list, never through a shell, so names
      * with spaces are safe.
      */
-    Finding[] checkDisk(Flag!"recursive" recursive = No.recursive) const
+    Finding[] checkDisk(Flag!"recursive" recursive = No.recursive, Flag!"force" force = No.force) const
     {
         import std.path : buildPath;
 
@@ -279,7 +287,7 @@ class ParentDirectory
             }
         }
 
-        return findings ~ unlistedFindings(seen, recursive);
+        return findings ~ unlistedFindings(seen, recursive, force);
     }
 
     /**
@@ -289,14 +297,15 @@ class ParentDirectory
      * entryFor() can work out its entry, so registerUnlisted() would
      * register it. Otherwise the message says what she needs to run.
      */
-    private Finding[] unlistedFindings(const bool[string] listed, Flag!"recursive" recursive) const
+    private Finding[] unlistedFindings(const bool[string] listed, Flag!"recursive" recursive,
+        Flag!"force" force) const
     {
         import std.algorithm.searching : canFind;
         import std.path : buildPath;
 
         Finding[] findings;
         const unlistedRepositories = recursive
-            ? unlistedRepositoriesRecursive(listed, findings)
+            ? unlistedRepositoriesRecursive(listed, force, findings)
             : this.unlistedRepositories(listed, findings); // this.: the method, not the variable
         foreach (unlistedRepository; unlistedRepositories)
         {
@@ -308,9 +317,11 @@ class ParentDirectory
             if (!unlistedRepository.parentIsTop)
             {
                 // Its own parent's business (proposal, answer 3b). Below a
-                // direct child of that parent only -r finds it, so say -r.
+                // direct child of that parent only -r finds it, so say -r;
+                // inside a directory a .gitignore names, only -r -f does.
                 findings ~= Finding(unlistedRepository.directory, notListed ~ "; run check-nested -C "
-                    ~ unlistedRepository.parentOnDisk ~ (name.canFind('/') ? " -r" : "") ~ " --fix", false);
+                    ~ unlistedRepository.parentOnDisk ~ (name.canFind('/') ? " -r" : "")
+                    ~ (unlistedRepository.belowNamed ? " -f" : "") ~ " --fix", false);
                 continue;
             }
             const entryResult = unlistedRepository.entryResult;
@@ -349,7 +360,7 @@ class ParentDirectory
      *
      * Returns: the entries registered, in name order.
      */
-    GitReposEntry[] registerUnlisted(Flag!"recursive" recursive = No.recursive)
+    GitReposEntry[] registerUnlisted(Flag!"recursive" recursive = No.recursive, Flag!"force" force = No.force)
     {
         bool[string] listed; // the .gitrepos directories, "/alpha/" form
         foreach (gitReposEntry; _gitRepos.gitReposEntries)
@@ -360,7 +371,7 @@ class ParentDirectory
         Finding[] listingFindings; // a directory that can't be listed; checkDisk() reports it
         GitReposEntry[] gitReposEntries;
         const unlistedRepositories = recursive
-            ? unlistedRepositoriesRecursive(listed, listingFindings)
+            ? unlistedRepositoriesRecursive(listed, force, listingFindings)
             : this.unlistedRepositories(listed, listingFindings);
         foreach (unlistedRepository; unlistedRepositories)
         {
@@ -484,6 +495,9 @@ class ParentDirectory
      *   any .gitignore it meets names (looseDirectory()'s rule, each line
      *   relative to its own .gitignore's folder). The managed block names
      *   every listed repo, so listed repos aren't walked into.
+     * - With `force` (-f), it walks into those named directories as well
+     *   (listed repos included), but never reports a named directory
+     *   itself. What it finds inside one is judged by the same rules.
      * - It follows symbolic links, and never enters a directory twice: it
      *   remembers each one's resolved path (realpath(3)), so a link loop
      *   ends. A directory reached twice is walked the first way, in name
@@ -502,7 +516,7 @@ class ParentDirectory
      *   read, is a finding appended to `findings`, and the walk goes on.
      */
     private UnlistedRepository[] unlistedRepositoriesRecursive(const bool[string] listed,
-        ref Finding[] findings) const
+        Flag!"force" force, ref Finding[] findings) const
     {
         import std.file : exists, FileException, isDir;
 
@@ -527,8 +541,8 @@ class ParentDirectory
         addNamed(_gitIgnore.before ~ _gitIgnore.nested ~ _gitIgnore.after, "", named);
         bool[string] visited = [resolvePath(directory): true]; // a set: only the keys matter
         UnlistedRepository[] unlistedRepositories;
-        walk(directory, "", listing, EnclosingParent(directory, "", true, listed.dup, true),
-            named, visited, unlistedRepositories, findings);
+        walk(directory, "", listing, EnclosingParent(directory, "", true, listed.dup, true), false,
+            force, named, visited, unlistedRepositories, findings);
         return unlistedRepositories;
     }
 
@@ -620,13 +634,15 @@ class ParentDirectory
 
     /**
      * The recursive walk below `onDisk`, whose entries are `listing` and
-     * whose prefix is `prefix` (see EnclosingParent). Recursion, not an
+     * whose prefix is `prefix` (see EnclosingParent). `belowNamed` says
+     * whether the path from the enclosing parent down to `onDisk` went
+     * through a named directory (only with `force`). Recursion, not an
      * explicit stack: the depth is the depth of the tree, and each call's
      * enclosing parent then simply goes out of scope on the way back up.
      */
     private void walk(string onDisk, string prefix, const Listing listing,
-        EnclosingParent enclosingParent, ref bool[string] named, ref bool[string] visited,
-        ref UnlistedRepository[] unlistedRepositories, ref Finding[] findings) const
+        EnclosingParent enclosingParent, bool belowNamed, Flag!"force" force, ref bool[string] named,
+        ref bool[string] visited, ref UnlistedRepository[] unlistedRepositories, ref Finding[] findings) const
     {
         import std.file : FileException;
         import std.path : buildPath;
@@ -635,7 +651,8 @@ class ParentDirectory
         {
             immutable childPrefix = prefix ~ "/" ~ name;
             immutable childDirectory = childPrefix ~ "/"; // relative to -C, "/tools/alpha/" form
-            if (childDirectory in named)
+            immutable isNamed = (childDirectory in named) !is null;
+            if (isNamed && !force)
             {
                 continue;
             }
@@ -673,7 +690,8 @@ class ParentDirectory
                 }
             }
 
-            if (isRepository && enclosingParent.readable)
+            // A named directory is never reported itself, even with -f.
+            if (isRepository && !isNamed && enclosingParent.readable)
             {
                 // "/tools/alpha/" less the parent's prefix "/tools": "/alpha/"
                 immutable relativeToParent = childDirectory[enclosingParent.prefix.length .. $];
@@ -682,7 +700,8 @@ class ParentDirectory
                     // No --branch or --url: what `add-nested <dir>` would record.
                     unlistedRepositories ~= UnlistedRepository(childDirectory, childOnDisk,
                         enclosingParent.isTop, enclosingParent.onDisk, relativeToParent,
-                        enclosingParent.isTop ? entryFor(directory, relativeToParent, "", "") : EntryResult.init);
+                        enclosingParent.isTop ? entryFor(directory, relativeToParent, "", "") : EntryResult.init,
+                        belowNamed);
                 }
             }
 
@@ -690,11 +709,15 @@ class ParentDirectory
             {
                 addNamedIn(childOnDisk, childPrefix, named, findings);
             }
+            // A new enclosing parent starts afresh: what lies below it is
+            // judged from there, so only named directories below it count.
+            immutable isEnclosingParent = isRepository || childListing.hasGitRepos;
             walk(childOnDisk, childPrefix, childListing,
-                isRepository || childListing.hasGitRepos
+                isEnclosingParent
                     ? enclosingParentAt(childOnDisk, childPrefix, childListing.hasGitRepos, findings)
                     : enclosingParent,
-                named, visited, unlistedRepositories, findings);
+                isEnclosingParent ? false : belowNamed || isNamed,
+                force, named, visited, unlistedRepositories, findings);
         }
     }
 
@@ -1744,6 +1767,112 @@ unittest
     assert(parentDirectory.checkDisk(Yes.recursive).map!(finding => finding.directory).array
         == ["/link/found/", "/outer/", "/outer/inner/", "/outer/sub/deeper/",
         "/research/unlistedhere/", "/tools/skipped/"]);
+}
+
+// --- checkDisk(Yes.recursive, Yes.force): -r -f ----------------------------------
+
+/// Item 6 with -r -f: the walk also goes into directories that a
+/// .gitignore line names (by hand, in the managed block, or in a nested
+/// .gitignore), but never reports a named directory itself. What it finds
+/// inside one is judged against its nearest enclosing parent as with -r,
+/// and the hint says -f when that parent needs it too. Dot-directories
+/// stay skipped, and links still can't loop. Without -f, or without -r,
+/// the same tree gives the old answers.
+unittest
+{
+    import std.algorithm.iteration : filter, map;
+    import std.array : array;
+    import std.file : symlink, write;
+    import gitIgnore : beginMarker, endMarker;
+    import nestedCommon : makeRemote;
+
+    immutable directory = testDirectory("parentDirectory-disk-force");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(directory, "secret", "main");
+    void initAt(string onDisk)
+    {
+        git("init", "-q", "-b", "main", onDisk); // no origin
+    }
+
+    immutable parent = buildPath(directory, "parent"); // a plain directory
+    // household: an unlisted repo that a hand-written line names, so never
+    // reported; what is inside it belongs to it.
+    initAt(buildPath(parent, "household"));
+    initAt(buildPath(parent, "household", "inside"));
+    // listed: named by the block. Its own .gitignore names vendor.
+    initAt(buildPath(parent, "listed"));
+    git("-C", buildPath(parent, "listed"), "remote", "add", "origin", "listed.git");
+    initAt(buildPath(parent, "listed", "inner"));
+    initAt(buildPath(parent, "listed", "vendor", "lib"));
+    buildPath(parent, "listed", ".gitignore").write("vendor\n");
+    // private: a plain directory a hand-written line names. secret has an
+    // origin and its nearest enclosing parent is the top: fixable.
+    git("clone", "-q", "-b", "main", remote, buildPath(parent, "private", "secret"));
+    git("-C", buildPath(parent, "private", "secret"), "remote", "set-head", "origin", "main"); // not left to clone
+    // tools: its own .gitignore names cache (a plain directory) and
+    // ignored (a repo, so the parent of what is inside it).
+    initAt(buildPath(parent, "tools", "cache", "found"));
+    initAt(buildPath(parent, "tools", "ignored"));
+    initAt(buildPath(parent, "tools", "ignored", "deep"));
+    buildPath(parent, "tools", ".gitignore").write("cache\n/ignored/\n");
+    parent.symlink(buildPath(parent, "tools", "loop")); // a link back to the top
+    // A dot-directory: never walked into, -f or not.
+    initAt(buildPath(parent, ".cache", "hidden"));
+    // zeta: unlisted and named by nothing, so reported in every mode.
+    initAt(buildPath(parent, "zeta"));
+    buildPath(parent, ".gitignore").write("*.o\n/household/\nprivate\n"
+        ~ beginMarker ~ "\n/listed/\n" ~ endMarker ~ "\n");
+    buildPath(parent, ".gitrepos").write("/listed/ listed.git\n");
+
+    auto parentDirectory = new ParentDirectory(parent);
+
+    // Without -f: nothing named is walked into. Without -r, -f changes nothing.
+    assert(parentDirectory.checkDisk(Yes.recursive).map!(finding => finding.directory).array == ["/zeta/"]);
+    assert(parentDirectory.checkDisk.map!(finding => finding.directory).array == ["/zeta/"]);
+    assert(parentDirectory.checkDisk(No.recursive, Yes.force) == parentDirectory.checkDisk);
+
+    const findings = parentDirectory.checkDisk(Yes.recursive, Yes.force);
+    assert(findings.map!(finding => finding.directory).array == ["/household/inside/", "/listed/inner/",
+        "/listed/vendor/lib/", "/private/secret/", "/tools/cache/found/", "/tools/ignored/deep/", "/zeta/"]);
+    assert(findings.map!(finding => finding.fixable).array
+        == [false, false, false, true, false, false, false]);
+
+    // Inside a named repo: that repo is its parent, and checking it there
+    // needs -f only when another named directory lies in between.
+    assert(findings[0].message == buildPath(parent, "household", "inside") ~ ": /inside/ is a git"
+        ~ " repository but is not listed in " ~ buildPath(parent, "household", ".gitrepos")
+        ~ "; run check-nested -C " ~ buildPath(parent, "household") ~ " --fix");
+    assert(findings[1].message == buildPath(parent, "listed", "inner") ~ ": /inner/ is a git"
+        ~ " repository but is not listed in " ~ buildPath(parent, "listed", ".gitrepos")
+        ~ "; run check-nested -C " ~ buildPath(parent, "listed") ~ " --fix");
+    assert(findings[2].message == buildPath(parent, "listed", "vendor", "lib") ~ ": /vendor/lib/ is a"
+        ~ " git repository but is not listed in " ~ buildPath(parent, "listed", ".gitrepos")
+        ~ "; run check-nested -C " ~ buildPath(parent, "listed") ~ " -r -f --fix");
+    // Inside a named plain directory: the top is still its parent.
+    assert(findings[3].message == buildPath(parent, "private", "secret") ~ ": /private/secret/ is a git"
+        ~ " repository but is not listed in " ~ buildPath(parent, ".gitrepos"));
+    assert(findings[4].message == buildPath(parent, "tools", "cache", "found") ~ ": /tools/cache/found/"
+        ~ " is a git repository but is not listed in " ~ buildPath(parent, ".gitrepos")
+        ~ "; it has no origin remote, so add it with add-nested --url <url> tools/cache/found");
+    assert(findings[5].message == buildPath(parent, "tools", "ignored", "deep") ~ ": /deep/ is a git"
+        ~ " repository but is not listed in " ~ buildPath(parent, "tools", "ignored", ".gitrepos")
+        ~ "; run check-nested -C " ~ buildPath(parent, "tools", "ignored") ~ " --fix");
+
+    // Registering: nothing without -f; with it, only the repo whose
+    // parent is the top. The block then names it, so it isn't reported.
+    assert(parentDirectory.registerUnlisted(Yes.recursive).length == 0);
+    assert(parentDirectory.registerUnlisted(No.recursive, Yes.force).length == 0);
+    assert(parentDirectory.registerUnlisted(Yes.recursive, Yes.force)
+        == [GitReposEntry("/private/secret/", remote, "")]);
+    assert(parentDirectory.gitIgnore.nested == ["/listed/", "/private/secret/"]);
+    assert(parentDirectory.checkDisk(Yes.recursive, Yes.force).filter!(finding => finding.fixable).empty);
+    assert(parentDirectory.checkDisk(Yes.recursive, Yes.force).map!(finding => finding.directory).array
+        == ["/household/inside/", "/listed/inner/", "/listed/vendor/lib/", "/tools/cache/found/",
+        "/tools/ignored/deep/", "/zeta/"]);
 }
 
 /// Item 6 with -r: a directory that can't be listed, and a nested
