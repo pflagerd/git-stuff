@@ -299,6 +299,30 @@ unittest
     assert(buildPath(parent, ".gitignore").readText == ""); // the loose line moved into the block, then removed
 }
 
+/// --fix doesn't register an unlisted nested repo: only check-nested --fix
+/// does that (#15).
+unittest
+{
+    import nestedCommon : git, makeRemote;
+
+    immutable scratch = testDirectory("removeNested-fix-unlisted");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = twoRepos(scratch);
+    immutable remote = makeRemote(scratch, "gamma", "main");
+    git("clone", "-q", "-b", "main", remote, buildPath(parent, "gamma")); // unlisted, fixable
+    git("-C", buildPath(parent, "gamma"), "remote", "set-head", "origin", "main");
+
+    string[2] text;
+    assert(removeNested(scratch, parent, ["--fix", "alpha"], text) == 0);
+    assert(buildPath(parent, ".gitrepos").readText == "/beta/ b.git dev\n");
+    assert(buildPath(parent, ".gitignore").readText
+        == "*.o\n" ~ beginMarker ~ "\n/beta/\n" ~ endMarker ~ "\n");
+}
+
 /// Usage: no directory, an unknown option, --help; a malformed file changes nothing.
 unittest
 {

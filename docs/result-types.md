@@ -10,8 +10,8 @@ one case, `null`) meaning success:
 
 | Function | Where |
 |---|---|
-| `directoryProblem` (now `checkDirectoryArgument`) | `addNested.d` |
-| `entryFor` | `addNested.d` (also passed on the others' messages) |
+| `directoryProblem` (now `checkDirectoryArgument`) | `addNested.d` (now `nestedCommon.d`) |
+| `entryFor` | `addNested.d` (now `nestedCommon.d`; also passed on the others' messages) |
 | `GitRepos.validate` | `gitRepos.d` (returned `null`, not `""`) |
 | `cloneNested` | `nestedCommon.d` |
 | `ParentDirectory.repositoryProblem` (now `checkRepository`) | `parentDirectory.d` |

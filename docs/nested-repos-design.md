@@ -255,6 +255,7 @@ but it costs nothing and is already correct if she later runs `git init`.
 | `remove(directory)` | Removes the directory from both (normalized, so `"alpha"` works); returns whether either file had it. **Never touches the directory on disk.** Deleting is the one irreversible action here, and it stays out of this class. |
 | `check()` | Returns a list of findings; prints nothing |
 | `fix()` | Repairs, in memory, everything `check()` marks fixable: builds a new `GitIgnore` without the loose lines (every other line kept exactly) and with their directories in the block; adds `.gitrepos` directories missing from the block; sorts and de-duplicates the block and sorts `.gitrepos`. Returns `check()` afterwards: the findings she still has to deal with, none fixable. Nothing is written until `write()`. |
+| `registerUnlisted()` | `add()`s each unlisted nested repo that `checkDisk()` marks fixable, with the entry `entryFor()` works out (#15). Unlike `fix()` it reads the disk (local git state only), so only `check-nested --fix` calls it. Returns the entries added. Nothing is written until `write()`. |
 | `write()` | Writes `.gitrepos` then `.gitignore`, each atomically |
 
 The pair of writes is not atomic: a crash between them can leave the files
@@ -303,8 +304,9 @@ lines, repos missing from the block, block entries missing from
 
 **The disk agrees with the files:** a separate method, `checkDisk()`, so
 `check()` never touches the disk; commands that want both call both. None
-of these findings is fixable (a missing clone is `pull-nested`'s job; the
-rest need her judgement). For each distinct `.gitrepos` directory, in file
+of the findings about listed repos is fixable (a missing clone is
+`pull-nested`'s job; the rest need her judgement); an unlisted repo can be
+(below). For each distinct `.gitrepos` directory, in file
 order, the first problem found is reported. Git is run with an argument
 list, never through a shell, so names with spaces are safe. Tested with
 local repositories in a temp directory (no network or SSH key needed).
@@ -333,7 +335,11 @@ local repositories in a temp directory (no network or SSH key needed).
 - Then, separately, each direct entry of the parent that is a nested repo
   (the test above) but is not in `.gitrepos` (#15). A directory any
   `.gitignore` line names, and names starting with `.`, are skipped;
-  symbolic links are followed. Design: `docs/unlisted-repos-proposal.md`.
+  symbolic links are followed. Fixable when `entryFor()` (in
+  `nestedCommon.d`) works out its entry as `add-nested <dir>` would;
+  `check-nested --fix` then registers it with `registerUnlisted()`. Not
+  fixable with no `origin`, a detached HEAD, or an entry `.gitrepos` would
+  refuse. Design: `docs/unlisted-repos-proposal.md`.
 - Further criteria: TBD.
 
 ### `--fix` and exit status

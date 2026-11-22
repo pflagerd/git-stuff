@@ -1,8 +1,10 @@
 # check-nested: report nested repos that `.gitrepos` doesn't list (proposal)
 
-Status: **all decisions made** (see Answers). **Step 1, the default
-mode (direct subdirectories, not fixable), is implemented** in
-`ParentDirectory.checkDisk()` item 6. The remaining steps, in order, are
+Status: **all decisions made** (see Answers). **Steps 1 and 2 are
+implemented:** the default mode (direct subdirectories) in
+`ParentDirectory.checkDisk()` item 6, and `check-nested --fix`
+registering what it finds (`ParentDirectory.registerUnlisted()`, using
+`entryFor()`, now in `nestedCommon.d`). The remaining steps, in order, are
 the checklist in issue
 [#15](https://github.com/pflagerd/git-stuff/issues/15). Builds on
 `docs/nested-repos-design.md` (`ParentDirectory.checkDisk()`) and follows the
@@ -183,8 +185,8 @@ Afterwards:
    `/household/`, named by a hand-written line, is not reported.
 
 3. **Answer (2026-11-22):** 3(b). `--fix` registers unlisted
-   repositories, as `add-nested <dir>` would, reusing `entryFor()` in
-   `addNested.d`, which reads the url from `origin` and the branch by
+   repositories, as `add-nested <dir>` would, reusing `entryFor()` (then
+   in `addNested.d`, moved to `nestedCommon.d` in step 2), which reads the url from `origin` and the branch by
    `add-nested`'s rule.
    - **Only `check-nested` does this.** Its `--fix` reads git state from
      disk. `ParentDirectory.fix()` works in memory only, and the other
