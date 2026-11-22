@@ -118,6 +118,13 @@ Teaching them what you're doing comes first. Speed comes second.
     since the issue has more steps.
   - Whoever does the step writes what she's doing as PR comments while she
     works, one comment per paragraph of output.
+  - Open the PR as a draft (`gh pr create --draft`), so it can't be merged
+    while the work is still going on. Mark it ready for review
+    (`gh pr ready <number>`) only when the step is complete: every commit
+    pushed, `make test` passing, and the final summary comment posted. The
+    owner merges only PRs marked ready. (On 2026-11-22 PR #30 was merged
+    after its first commit, while the rest of step 1 of #29 was still being
+    written.)
   - The owner reviews and merges. Don't merge it yourself. After the merge,
     tick the step in the issue's checklist.
 - Everything else (docs, process, small fixes outside a step) is committed
