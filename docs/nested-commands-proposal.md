@@ -74,6 +74,11 @@ Parsed with Phobos [`std.getopt`](https://dlang.org/phobos/std_getopt.html).
 2. With `--fix`: `fix()`, then `write()`.
 3. Print `check()` and `checkDisk()` findings; exit 0 if none, else 1.
 
+Added later (#15): `checkDisk()` also reports git repositories that
+`.gitrepos` doesn't list, `--fix` registers them
+(`registerUnlisted()`, before `fix()`), and `-r` / `--recursive` and
+`-f` / `--force` widen the search. See `docs/unlisted-repos-proposal.md`.
+
 ### `add-nested [-C dir] [--fix] [--branch <name>] [--url <url>] <directory>...`
 
 For each directory:
