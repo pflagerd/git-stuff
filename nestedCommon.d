@@ -117,7 +117,7 @@ Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions commonOptions
         auto result = getopt(args, config.caseSensitive,
             "C", "Work in <directory> instead of the current directory.", &commonOptions.directory,
             "fix", "Repair fixable findings in .gitignore and .gitrepos first.", &commonOptions.fix,
-            "no-check", "Don't check .gitignore, .gitrepos and the nested repos, or report problems.",
+            "no-check", "Don't check .gitignore and .gitrepos or report their problems; not with --fix.",
                 &commonOptions.noCheck,
             extra);
         if (result.helpWanted)

@@ -13,9 +13,9 @@ import nestedCommon : checkDirectoryArgument, CommonOptions, DirectoryArgumentOu
     EntryOutcome, ExitStatus, loadParent, parseOptions, printFindings;
 import parentDirectory : ParentDirectory;
 
-enum usage = "Usage: add-nested [-C <directory>] [--fix] [--branch <name>] [--url <url>]
-                  <nested directory>...
-       add-nested [-C <directory>] [--fix] [--branch <name>]
+enum usage = "Usage: add-nested [-C <directory>] [--fix | --no-check] [--branch <name>]
+                  [--url <url>] <nested directory>...
+       add-nested [-C <directory>] [--fix | --no-check] [--branch <name>]
                   --clone <url> [<nested directory>]
 
 Registers each nested directory (an existing clone, given relative to the
@@ -26,8 +26,12 @@ Every argument is checked first; if any fails, nothing is written.
 With --clone, first clones <url> into the nested directory (by default
 the name git clone would choose), which must not exist yet.
 
-Exit status: 0 done, 1 an argument failed or problems remain, 2 bad usage
-or a file that can't be read.
+Afterwards, problems left in .gitignore and .gitrepos are reported, except
+with --no-check.
+
+Exit status: 0 done, 1 an argument failed or problems remain (with
+--no-check, only a failed argument, clone or write), 2 bad usage or a
+file that can't be read.
 ";
 
 /**
@@ -114,6 +118,10 @@ ExitStatus run(string[] args, File output, File errors)
     {
         output.writeln("added ", gitReposEntry.directory, " ", gitReposEntry.url,
             gitReposEntry.branch.length ? " " ~ gitReposEntry.branch : "");
+    }
+    if (commonOptions.noCheck)
+    {
+        return ExitStatus.ok; // #29: no check after writing; the add itself succeeded
     }
     return checkWritten(commonOptions.directory, output, errors);
 }
@@ -270,6 +278,10 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
     }
     output.writeln("added ", gitReposEntry.directory, " ", gitReposEntry.url,
         gitReposEntry.branch.length ? " " ~ gitReposEntry.branch : "");
+    if (commonOptions.noCheck)
+    {
+        return ExitStatus.ok; // #29: no check after writing; the clone and add succeeded
+    }
     return checkWritten(commonOptions.directory, output, errors);
 }
 
@@ -539,6 +551,56 @@ unittest
 
     assert(addNested(scratch, parent, ["--fix", "alpha"], text) == 0, text[1]);
     assert(files(parent)[1] == beginMarker ~ "\n/alpha/\n/gamma/\n" ~ endMarker ~ "\n");
+}
+
+/// --no-check (#29): the add happens, nothing is reported about the files
+/// afterwards, and the exit status reflects only the add, for an existing
+/// clone and with --clone. A failed argument still exits 1. --no-check
+/// --fix is bad usage (decision 12) and changes nothing.
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable scratch = testDirectory("addNested-no-check");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable alphaRemote = makeRemote(scratch, "alpha", "main");
+    immutable betaRemote = makeRemote(scratch, "beta", "main");
+    immutable parent = buildPath(scratch, "parent");
+    git("clone", "-q", alphaRemote, buildPath(parent, "alpha"));
+    parent.mkdirRecurse;
+    buildPath(parent, ".gitignore").write("gamma\n"); // a loose line for /gamma/
+    buildPath(parent, ".gitrepos").write("/gamma/ g.git\n");
+
+    string[2] text;
+    foreach (given; [["--no-check", "--fix"], ["--fix", "--no-check"]])
+    {
+        assert(addNested(scratch, parent, given ~ "alpha", text) == 2, given[0]);
+        assert(text[1] == "add-nested: --no-check can't be used with --fix: with the checks off,"
+            ~ " there is nothing for it to do\n", text[1]);
+        assert(text[0] == "");
+        assert(files(parent) == ["/gamma/ g.git\n", "gamma\n"]); // untouched
+    }
+
+    assert(addNested(scratch, parent, ["--no-check", "alpha"], text) == 0, text[1]);
+    assert(text[0] == "added /alpha/ " ~ alphaRemote ~ "\n" && text[1] == "", text[1]);
+    assert(files(parent)[0] == "/alpha/ " ~ alphaRemote ~ "\n/gamma/ g.git\n");
+
+    assert(addNested(scratch, parent, ["--no-check", "--clone", betaRemote], text) == 0, text[1]);
+    assert(!text[1].canFind("warning: "), text[1]);
+    assert(text[0].canFind("added /beta/ " ~ betaRemote ~ "\n"));
+    assert(files(parent)[0].canFind("/beta/ " ~ betaRemote ~ "\n"));
+
+    // Without --no-check the loose line is still reported, as before.
+    assert(addNested(scratch, parent, ["alpha"], text) == 1);
+    assert(text[1].canFind("warning: ") && text[1].canFind("outside the managed block"));
+
+    // The add's own failures still count.
+    assert(addNested(scratch, parent, ["--no-check", "missing"], text) == 1);
+    assert(text[1].canFind("nothing was changed") && !text[1].canFind("warning: "), text[1]);
 }
 
 /// --fix doesn't register an unlisted nested repo it wasn't given: only

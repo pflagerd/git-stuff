@@ -169,21 +169,24 @@ make DC=dmd
 |---|---|
 | `-C <directory>` | Work in that parent directory instead of the current one (like `git -C`). |
 | `--fix` | First repair what can be repaired in `.gitignore` and `.gitrepos` (sort, de-duplicate, move nested-repo lines into the managed block, add missing block entries), and write both files. |
+| `--no-check` | Don't check the two files or report their problems; the command only does its own job. It can't be combined with `--fix`, and `check-nested` refuses it, since checking is all it does: both are bad usage (exit status 2). |
 | `-h`, `--help` | Print usage. |
 
 | Exit status | Meaning |
 |---|---|
 | 0 | Did its job, and no problems remain. |
-| 1 | Did what it could, but problems remain or something failed for some repo or argument. |
+| 1 | Did what it could, but problems remain or something failed for some repo or argument. With `--no-check`, only the latter. |
 | 2 | Couldn't start: bad usage, or `.gitignore`/`.gitrepos` couldn't be read; nothing was changed. |
 
 Problems are printed as `warning:` lines on standard error, marked
 `(fixable with --fix)` where that applies. Nested directories are given
 relative to the parent directory, in any slash form (`alpha`, `/alpha/`,
-`tools/alpha`); `.` and `..` aren't allowed. Afterwards, each command
-reports any problems left in the two files, as `check-nested` would. Git
-always runs with an argument list, never through a shell, so names with
-spaces are safe.
+`tools/alpha`); `.` and `..` aren't allowed. Besides its own job, each
+command reports the problems in the two files, as `check-nested` would:
+`pull-nested` and `push-nested` before they start, `add-nested` and
+`remove-nested` afterwards, on the files as written. `--no-check` leaves
+that report out. Git always runs with an argument list, never through a
+shell, so names with spaces are safe.
 
 ### `add-nested [--branch <name>] [--url <url>] <nested directory>...`
 
@@ -200,6 +203,8 @@ each.
   `pull-nested` would arrive at it by itself from a fresh clone (decision 3
   in `docs/nested-commands-proposal.md`); `--branch` is always recorded.
 - `--branch` and `--url` need exactly one nested directory.
+- Afterwards it reports the problems left in the two files as written,
+  unless you give `--no-check`.
 
 **`add-nested [--branch <name>] --clone <url> [<nested directory>]`** clones
 `<url>` first, into the nested directory given or else the one `git clone`
@@ -227,8 +232,9 @@ own messages shown as they happen:
   means, it warns and pulls the branch you're on.
 
 A failure in one repo doesn't stop the others. Problems with the two files
-are reported first but don't stop the pull. Git runs with your terminal, so
-ssh can still ask for a passphrase.
+are reported first but don't stop the pull; with `--no-check` they aren't
+looked for, but a directory that isn't a nested repo is still skipped. Git
+runs with your terminal, so ssh can still ask for a passphrase.
 
 ### `push-nested [--origin-only] [--parent]`
 
@@ -251,6 +257,9 @@ and reported, and you pull first.
 - **Uncommitted changes** get a note: only what's committed is pushed.
 - **`--parent`** also pushes the parent directory itself, after the nested
   repos, by the same rules.
+- **`--no-check`** leaves out the report on the two files that comes
+  before the pushes. The skips above still happen: they decide whether a
+  repo can be pushed.
 
 Design: `docs/push-nested-proposal.md`.
 
@@ -260,7 +269,8 @@ Reports problems with `.gitignore` and `.gitrepos`, and with the nested
 repos they list on disk (missing, not a repository, no remote with the
 listed url). It never uses the network, and prints nothing when there's
 nothing to report. With `--fix` it repairs what it can, writes both files,
-and prints `fixed N problem(s)`.
+and prints `fixed N problem(s)`. `--no-check` is bad usage here (exit
+status 2), since checking is all `check-nested` does.
 
 It also reports each git repository directly in the parent directory that
 `.gitrepos` doesn't list. `--fix` registers it, as `add-nested <dir>` would
@@ -302,7 +312,8 @@ Removes each nested directory from `.gitrepos` and from the managed block of
 `.gitignore`, printing `removed /alpha/ from ...` for each. **It never
 deletes a directory**; if one is still on disk, the message says so. A
 directory in neither file gets a warning, and the others are still removed.
-The files are only rewritten if something changed.
+The files are only rewritten if something changed. Afterwards it reports
+the problems left in the two files, unless you give `--no-check`.
 
 ## Debugging
 

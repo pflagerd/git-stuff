@@ -47,6 +47,7 @@ the others, so checking never risks network access or changes.
 |---|---|
 | `-C <directory>` | Work in that parent directory instead of the current one (like `git -C`) |
 | `--fix` | Before doing its job, apply `ParentDirectory.fix()` and write the files |
+| `--no-check` | Added later (#29, step 1): skip the `check()` report, before or after the job, so the exit status reflects only the job. `pull-nested`/`push-nested` still test each repo with `checkRepository()`. With `--fix`, or in `check-nested`, it is a usage error (exit status 2). |
 | `-h`, `--help` | Usage |
 
 Parsed with Phobos [`std.getopt`](https://dlang.org/phobos/std_getopt.html).

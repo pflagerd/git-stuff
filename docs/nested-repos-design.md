@@ -361,6 +361,10 @@ local repositories in a temp directory (no network or SSH key needed).
   then write them.
 - **Exit status:** non-zero when `check()` or `checkDisk()` reports any
   finding, so scripts notice, as linters do.
+- **`--no-check`** (#29, step 1): the other commands skip the `check()`
+  report, so findings can't affect their exit status. `check-nested`
+  refuses it, and `--no-check --fix` is bad usage in every command
+  (exit status 2).
 
 ## Open questions
 
