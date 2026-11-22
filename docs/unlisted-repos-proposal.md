@@ -1,13 +1,14 @@
 # check-nested: report nested repos that `.gitrepos` doesn't list (proposal)
 
-Status: **all decisions made** (see Answers). **Steps 1 to 3 are
+Status: **all decisions made** (see Answers). **Steps 1 to 4 are
 implemented:** the default mode (direct subdirectories) in
 `ParentDirectory.checkDisk()` item 6, `check-nested --fix`
 registering what it finds (`ParentDirectory.registerUnlisted()`, using
-`entryFor()`, now in `nestedCommon.d`), and `-r` / `--recursive`
-(`checkDisk(Yes.recursive)`, `unlistedRepositoriesRecursive()`, PR #28).
-The remaining steps, in order, are
-the checklist in issue
+`entryFor()`, now in `nestedCommon.d`), `-r` / `--recursive`
+(`checkDisk(Yes.recursive)`, `unlistedRepositoriesRecursive()`, PR #28),
+and `-f` / `--force` (`checkDisk(Yes.recursive, Yes.force)`, PR #32;
+without `-r` it has no effect and prints a warning). The remaining step
+is the last in the checklist in issue
 [#15](https://github.com/pflagerd/git-stuff/issues/15). Builds on
 `docs/nested-repos-design.md` (`ParentDirectory.checkDisk()`) and follows the
 conventions of `docs/nested-commands-proposal.md`.
@@ -239,3 +240,13 @@ applying the revised answers:
 
 The simulation finds repositories by the presence of `.git`, not by
 `checkRepository()`, so the real check may differ in edge cases.
+
+The real check, run on the same tree later on 2026-11-22 (PR #32), after
+most of the seven had been registered: `-r` reported one unlisted
+repository (`chromium`) in about 4 s, and `-r -f` added
+`pflager.net/projects/genmitsu-jinsoku-Z3-galvo-laser`, against
+`pflager.net`, in about 7 s, as the simulation predicted. Its hint says
+`check-nested -C <...>/pflager.net -r --fix`, without `-f`: from
+`pflager.net` itself, nothing on the way is named. `-r -f` also met two
+`.gitrepos` files inside `bok` that aren't in this format and reported
+them as unreadable.

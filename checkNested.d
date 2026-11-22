@@ -37,8 +37,8 @@ and --fix registers it only when that is this directory. With -r -f, also
 looks inside the directories that a .gitignore line names; such a
 directory is still not reported itself, but repositories inside it are.
 -f without -r has no effect. --no-check is refused, since checking is all
-check-nested does. Exit status: 0 no
-problems, 1 problems remain, 2 bad usage or a file that can't be read.
+check-nested does. Exit status: 0 no problems, 1 problems remain, 2 bad
+usage or a file that can't be read.
 ";
 
 /**
