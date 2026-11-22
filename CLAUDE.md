@@ -106,8 +106,20 @@ Teaching them what you're doing comes first. Speed comes second.
   Kubuntu machine. Write designs and decisions to `docs/` in the repo,
   and tasks and steps to the current issue, not only in chat, so the
   other environment can pick them up.
-- Work directly on `master`: commit and push there, and don't create
-  feature branches unless the owner asks for one. (A cloud session may be
-  started with a branch name of its own; work on `master` anyway.)
+- **Each step of the current issue gets its own branch and pull request**
+  (decided 2026-11-22):
+  - Branch from `master`, named like `issue-15-step-2-fix-registers`.
+  - The PR's title and description give the step's original number and its
+    description from the issue's checklist (for example "Step 2: `--fix`
+    registers them"), and say "Part of #<issue>". Use no closing keyword,
+    since the issue has more steps.
+  - Whoever does the step writes what she's doing as PR comments while she
+    works, one comment per paragraph of output.
+  - The owner reviews and merges. Don't merge it yourself. After the merge,
+    tick the step in the issue's checklist.
+- Everything else (docs, process, small fixes outside a step) is committed
+  directly to `master`. Don't create other branches unless the owner asks.
+  (A cloud session may be started with a branch name of its own; work as
+  above anyway.)
 - Before finishing, make sure work is committed and pushed, and say which
   branch it's on.
