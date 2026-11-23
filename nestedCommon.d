@@ -10,6 +10,7 @@ module nestedCommon;
 
 import core.attribute : mustuse;
 import std.stdio : File;
+import std.typecons : Flag;
 
 import finding : Finding;
 import gitRepos : GitRepos, GitReposEntry, ValidationOutcome;
@@ -26,10 +27,10 @@ enum ExitStatus : int
 // --- options -------------------------------------------------------------------
 
 /**
- * The options every command takes, and the check options runChecks()
- * reads. For now only check-nested parses `recursive` and `force`: it
- * passes them to parseOptions() among its own options (`extra`). In the
- * other commands they stay false (#29, step 2).
+ * The options every command takes, parsed by parseOptions(). `fix`,
+ * `recursive` and `force` are the check options runChecks() reads; every
+ * command runs runChecks() before its own work, unless `noCheck` (#29,
+ * step 3).
  */
 struct CommonOptions
 {
@@ -53,6 +54,14 @@ string[] checkOptionsGiven(const CommonOptions commonOptions) @safe pure nothrow
     if (commonOptions.fix)
     {
         given ~= "--fix";
+    }
+    if (commonOptions.recursive)
+    {
+        given ~= "-r/--recursive";
+    }
+    if (commonOptions.force)
+    {
+        given ~= "-f/--force";
     }
     return given;
 }
@@ -102,16 +111,15 @@ struct Parsed
 }
 
 /**
- * Parses -C, --fix, --no-check and -h/--help, plus any options of one command passed as
- * `extra` (in std.getopt's form: name, help text, pointer, ...). What is
- * left in `args` afterwards is the program name followed by the positional
- * arguments.
+ * Parses -C, --fix, --no-check, -r/--recursive, -f/--force and -h/--help,
+ * plus any options of one command passed as `extra` (in std.getopt's form:
+ * name, help text, pointer, ...). What is left in `args` afterwards is the
+ * program name followed by the positional arguments.
  *
  * -h/--help prints `usage` and the option list to `output` (exit 0). An
  * unknown or malformed option prints a message to `errors` (exit 2), and so
- * does --no-check with a common check option (reportNoCheckConflict). A
- * command's own check options, such as check-nested's -r, are its own to
- * refuse. Options are case-sensitive, so -C is not -c.
+ * does --no-check with a check option (reportNoCheckConflict). Options are
+ * case-sensitive, so -C is not -c.
  */
 Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions commonOptions,
     File output, File errors, string usage, Extra extra)
@@ -124,8 +132,12 @@ Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions commonOptions
         auto result = getopt(args, config.caseSensitive,
             "C", "Work in <directory> instead of the current directory.", &commonOptions.directory,
             "fix", "Repair fixable findings in .gitignore and .gitrepos first.", &commonOptions.fix,
-            "no-check", "Don't check .gitignore and .gitrepos or report their problems; not with --fix.",
+            "no-check", "Don't run the checks or report their problems; not with --fix, -r or -f.",
                 &commonOptions.noCheck,
+            "recursive|r", "Look for unlisted repos below the direct subdirectories too.",
+                &commonOptions.recursive,
+            "force|f", "With -r, also look inside the directories that .gitignore names.",
+                &commonOptions.force,
             extra);
         if (result.helpWanted)
         {
@@ -149,6 +161,21 @@ Parsed parseOptions(Extra...)(ref string[] args, ref CommonOptions commonOptions
         return Parsed(false, ExitStatus.usage);
     }
     return Parsed(true, ExitStatus.ok);
+}
+
+/**
+ * The warning for -f without -r (the unlisted-repos proposal's answer 1b):
+ * without -r the checks don't walk, so -f has no effect. It is not
+ * refused, but she is told, in case she meant -r -f; the exit status
+ * doesn't change. Every command calls this after its own usage checks and
+ * before loadParent(), so the warning comes even when a file won't parse.
+ */
+void warnForceWithoutRecursive(string program, const CommonOptions commonOptions, File errors)
+{
+    if (commonOptions.force && !commonOptions.recursive)
+    {
+        errors.writeln(program, ": warning: -f/--force has no effect without -r/--recursive");
+    }
 }
 
 // --- loading ---------------------------------------------------------------------
@@ -210,23 +237,30 @@ enum ChecksOutcome
 }
 
 /**
- * check-nested's work on a loaded `parentDirectory`, with the check
- * options in `commonOptions` (#29, step 2):
+ * The checks every command runs on a loaded `parentDirectory` before its
+ * own work, with the check options in `commonOptions` (#29, steps 2 and 3):
  *
- * 1. With --fix: registers the unlisted repos (registerUnlisted(), with
- *    -r and -f), then fix() and write(); then prints `added ...` for each
- *    repo it registered and `fixed N problem(s)` to `output`.
+ * 1. With --fix: if `register` is Yes.register, registers the unlisted
+ *    repos (registerUnlisted(), with -r and -f); then fix() and write();
+ *    then prints `added ...` for each repo it registered and
+ *    `fixed N problem(s)` to `output`.
  * 2. Prints the findings left, check() ~ checkDisk(), to `errors`.
+ *
+ * Only check-nested passes Yes.register. The other four commands pass
+ * No.register (#29 step 3; step 5 sets per-command rules), so their --fix
+ * repairs the files but leaves unlisted repos to be reported.
  *
  * It reads neither `commonOptions.noCheck` nor `commonOptions.directory`:
  * the caller has already dealt with --no-check, and loaded the parent.
+ * Since `parentDirectory` is a class, the caller goes on with the fixed
+ * objects that were written.
  *
  * Returns: clean or findingsRemain; or writeFailed, with a message for the
  * caller to print after its program name. After writeFailed, step 2
  * hasn't run.
  */
 ChecksResult runChecks(ParentDirectory parentDirectory, const CommonOptions commonOptions,
-    File output, File errors)
+    Flag!"register" register, File output, File errors)
 {
     import std.algorithm.iteration : filter;
     import std.algorithm.searching : count;
@@ -239,7 +273,8 @@ ChecksResult runChecks(ParentDirectory parentDirectory, const CommonOptions comm
     {
         immutable fixable = parentDirectory.check.filter!(finding => finding.fixable).count;
         // Registered first, so fix() then sorts them into both files.
-        const gitReposEntries = parentDirectory.registerUnlisted(recursive, force);
+        const GitReposEntry[] gitReposEntries = register
+            ? parentDirectory.registerUnlisted(recursive, force) : [];
         parentDirectory.fix();
         try
         {
@@ -645,8 +680,10 @@ CloneResult cloneNested(string onDisk, string directory, string url, string list
 
 version (unittest)
 {
+    import std.array : join;
     import std.file : readText, rmdirRecurse;
     import std.path : buildPath;
+    import std.typecons : No, Yes;
     import textFile : testDirectory;
 
     /// Runs `body` with `output` and `errors` going to files in `directory`,
@@ -709,10 +746,10 @@ unittest
     });
 }
 
-/// -r and -f are CommonOptions fields, but parseOptions doesn't parse them
-/// itself: a command that doesn't pass them as its own options (all but
-/// check-nested, #29 step 2) still refuses them (exit 2). check-nested's
-/// way, passing the fields as `extra`, sets them.
+/// -r/--recursive and -f/--force are parseOptions's own (#29 step 3), so
+/// every command accepts them without passing them as `extra`, in either
+/// spelling, and a command's own options still come alongside. --help lists
+/// them.
 unittest
 {
     import std.algorithm.searching : canFind;
@@ -723,26 +760,35 @@ unittest
         directory.rmdirRecurse;
     }
 
-    foreach (option; ["-r", "--recursive", "-f", "--force"])
+    foreach (given; [["-r", "-f"], ["--recursive", "--force"]])
     {
         auto text = captured(directory, (File output, File errors) {
-            string[] args = ["pull-nested", option];
+            string[] args = ["pull-nested"] ~ given ~ ["--fix"];
             CommonOptions commonOptions;
-            const parsed = parseOptions(args, commonOptions, output, errors, "usage");
-            assert(!parsed.proceed && parsed.exitStatus == ExitStatus.usage, option);
-            assert(!commonOptions.recursive && !commonOptions.force, option);
+            assert(parseOptions(args, commonOptions, output, errors, "usage").proceed, given[0]);
+            assert(commonOptions.recursive && commonOptions.force && commonOptions.fix, given[0]);
+            assert(args == ["pull-nested"], given[0]);
         });
-        assert(text[0] == "" && text[1].canFind("pull-nested: "), option);
+        assert(text[0] == "" && text[1] == "", given[0]);
     }
 
     captured(directory, (File output, File errors) {
-        string[] args = ["check-nested", "-r", "-f"];
+        string[] args = ["add-nested", "-r", "--branch", "dev", "alpha"];
         CommonOptions commonOptions;
+        string branch;
         assert(parseOptions(args, commonOptions, output, errors, "usage",
-            "recursive|r", "", &commonOptions.recursive,
-            "force|f", "", &commonOptions.force).proceed);
-        assert(commonOptions.recursive && commonOptions.force && args == ["check-nested"]);
+            "branch", "", &branch).proceed);
+        assert(commonOptions.recursive && !commonOptions.force && branch == "dev");
+        assert(args == ["add-nested", "alpha"]);
     });
+
+    auto text = captured(directory, (File output, File errors) {
+        string[] args = ["remove-nested", "--help"];
+        CommonOptions commonOptions;
+        assert(!parseOptions(args, commonOptions, output, errors, "usage").proceed);
+    });
+    assert(text[0].canFind("-r") && text[0].canFind("--recursive") && text[0].canFind("-f")
+        && text[0].canFind("--force"), text[0]);
 }
 
 /// -h/--help prints usage to output and exits 0; nothing goes to errors.
@@ -842,6 +888,31 @@ unittest
     }
 }
 
+/// --no-check with -r or -f is a usage error too, in every command, and
+/// the message names every check option given (#29 decision 12, step 3).
+unittest
+{
+    immutable directory = testDirectory("nestedCommon-no-check-recursive");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    foreach (given; [["-r"], ["-f"], ["--fix", "-r", "-f"]])
+    {
+        CommonOptions commonOptions;
+        auto text = captured(directory, (File output, File errors) {
+            string[] args = ["remove-nested", "--no-check"] ~ given ~ ["alpha"];
+            const parsed = parseOptions(args, commonOptions, output, errors, "usage");
+            assert(!parsed.proceed && parsed.exitStatus == ExitStatus.usage, given[0]);
+        });
+        assert(text[0] == "", given[0]);
+        assert(text[1] == "remove-nested: --no-check can't be used with " ~ checkOptionsGiven(commonOptions)
+            .join(", ") ~ ": with the checks off, there is nothing for " ~ (given.length == 1 ? "it" : "them")
+            ~ " to do\n", text[1]);
+    }
+}
+
 /// checkOptionsGiven lists the common check options set, and
 /// reportNoCheckConflict names them all, or prints nothing for none.
 unittest
@@ -856,6 +927,12 @@ unittest
     CommonOptions commonOptions;
     commonOptions.fix = true;
     assert(checkOptionsGiven(commonOptions) == ["--fix"]);
+    commonOptions.recursive = true;
+    commonOptions.force = true;
+    assert(checkOptionsGiven(commonOptions) == ["--fix", "-r/--recursive", "-f/--force"]);
+    commonOptions.fix = false;
+    commonOptions.recursive = false;
+    assert(checkOptionsGiven(commonOptions) == ["-f/--force"]);
 
     auto text = captured(directory, (File output, File errors) {
         assert(!reportNoCheckConflict("add-nested", [], errors));
@@ -864,6 +941,32 @@ unittest
     assert(text[0] == "");
     assert(text[1] == "add-nested: --no-check can't be used with --fix, -f/--force: with the checks"
         ~ " off, there is nothing for them to do\n", text[1]);
+}
+
+/// warnForceWithoutRecursive warns only for -f without -r, naming the
+/// program; it prints nothing to the output.
+unittest
+{
+    immutable directory = testDirectory("nestedCommon-force-warning");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    CommonOptions commonOptions;
+    string[2] warn()
+    {
+        return captured(directory, (File output, File errors) {
+            warnForceWithoutRecursive("push-nested", commonOptions, errors);
+        });
+    }
+    assert(warn() == ["", ""]);
+    commonOptions.recursive = true;
+    assert(warn() == ["", ""]);
+    commonOptions.force = true;
+    assert(warn() == ["", ""]); // -r -f: nothing to warn about
+    commonOptions.recursive = false;
+    assert(warn() == ["", "push-nested: warning: -f/--force has no effect without -r/--recursive\n"]);
 }
 
 /// Parsed.exitStatus is an ExitStatus: a bare number can't be stored in it,
@@ -933,7 +1036,7 @@ unittest
     {
         auto parentDirectory = new ParentDirectory(parent);
         return captured(scratch, (File output, File errors) {
-            checksResult = runChecks(parentDirectory, commonOptions, output, errors);
+            checksResult = runChecks(parentDirectory, commonOptions, Yes.register, output, errors);
         });
     }
 
@@ -962,6 +1065,45 @@ unittest
     assert(text[1] == "");
     assert(buildPath(parent, ".gitrepos").readText
         == "/private/secret/ " ~ secretRemote ~ "\n/tools/gamma/ " ~ gammaRemote ~ "\n");
+}
+
+/// runChecks with No.register, as the four other commands run it (#29
+/// step 3): --fix repairs and writes the files, but registers nothing, so
+/// the unlisted repo is still reported, and `fixed` counts only the repairs.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.file : write;
+
+    immutable scratch = testDirectory("nestedCommon-runChecks-noRegister");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable gammaRemote = makeRemote(scratch, "gamma", "main");
+    immutable parent = buildPath(scratch, "parent");
+    git("clone", "-q", "-b", "main", gammaRemote, buildPath(parent, "gamma"));
+    git("-C", buildPath(parent, "gamma"), "remote", "set-head", "origin", "main"); // not left to clone
+    // Three fixable findings: .gitrepos unsorted, and neither directory in
+    // .gitignore's block. Both listed repos are missing on disk.
+    buildPath(parent, ".gitrepos").write("/beta/ b.git\n/alpha/ a.git\n");
+
+    CommonOptions commonOptions;
+    commonOptions.fix = true;
+    auto parentDirectory = new ParentDirectory(parent);
+    ChecksResult checksResult;
+    auto text = captured(scratch, (File output, File errors) {
+        checksResult = runChecks(parentDirectory, commonOptions, No.register, output, errors);
+    });
+    assert(checksResult.outcome == ChecksOutcome.findingsRemain && checksResult.message == "");
+    assert(text[0] == "fixed 3 problem(s)\n", text[0]); // no "added" line
+    assert(text[1].canFind("/gamma/ is a git repository but is not listed"), text[1]);
+    assert(text[1].canFind("does not exist"), text[1]);
+    assert(buildPath(parent, ".gitrepos").readText == "/alpha/ a.git\n/beta/ b.git\n");
+    assert(!buildPath(parent, ".gitrepos").readText.canFind("gamma"));
+    // The caller goes on with the fixed objects.
+    assert(parentDirectory.check.length == 0);
 }
 
 /// runChecks: writeFailed when --fix can't write. The message is for the
@@ -995,7 +1137,7 @@ unittest
     auto parentDirectory = new ParentDirectory(parent);
     ChecksResult checksResult;
     auto text = captured(scratch, (File output, File errors) {
-        checksResult = runChecks(parentDirectory, commonOptions, output, errors);
+        checksResult = runChecks(parentDirectory, commonOptions, Yes.register, output, errors);
     });
     assert(checksResult.outcome == ChecksOutcome.writeFailed);
     assert(checksResult.message.startsWith("could not write the fixed files: "), checksResult.message);
@@ -1084,6 +1226,113 @@ version (unittest)
         }
         return remote;
     }
+
+    /**
+     * A parent for the tests of the checks each command runs first (#29
+     * step 3), in `scratch`; returns its path. It has:
+     * - /alpha/, listed in .gitrepos and in .gitignore's block, and cloned
+     *   on branch main, so the checks find nothing about it;
+     * - tools/gamma, an unlisted clone that only -r finds;
+     * - private/secret, an unlisted clone inside a directory that a
+     *   .gitignore line (`/private/`, outside the block) names, which only
+     *   -r -f finds.
+     * So without -r the checks report nothing. Each remote is named like
+     * its clone, so check-nested --fix would register both without a
+     * branch. Nothing is left to git's defaults: each clone is made with
+     * -b main, and origin/HEAD is set explicitly.
+     */
+    string checksFixture(string scratch)
+    {
+        import std.file : write;
+        import gitIgnore : beginMarker, endMarker;
+
+        immutable parent = buildPath(scratch, "parent");
+        foreach (name, clone; ["alpha": "alpha", "gamma": "tools/gamma", "secret": "private/secret"])
+        {
+            immutable remote = makeRemote(scratch, name, "main");
+            immutable onDisk = buildPath(parent, clone);
+            git("clone", "-q", "-b", "main", remote, onDisk);
+            git("-C", onDisk, "remote", "set-head", "origin", "main");
+        }
+        buildPath(parent, ".gitrepos").write("/alpha/ " ~ buildPath(scratch, "alpha.git") ~ "\n");
+        buildPath(parent, ".gitignore").write("/private/\n" ~ beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n");
+        return parent;
+    }
+
+    /// Like captured(), but `output` and `errors` are one file, so the text
+    /// shows the order in which lines went to the two. (Test builds only;
+    /// the commands' tests use it.)
+    string capturedTogether(string directory, scope void delegate(File, File) body)
+    {
+        immutable path = buildPath(directory, "together");
+        {
+            auto file = File(path, "w");
+            body(file, file);
+        } // closed here, so everything is flushed
+        return path.readText;
+    }
+
+    /**
+     * Whether the only warnings in `errors` are the checks' "does not
+     * exist", one for each of `names` in `parent`, in order. Since #29 step
+     * 3 the checks run before each command's work, so pull-nested reports
+     * a repo it is about to clone as missing, and remove-nested one it is
+     * about to remove; with findings, the exit status is 1. Step 5 leaves
+     * the findings the work resolves out (decision 5), and step 6 stops
+     * findings changing the exit status (decision 2). (Test builds only.)
+     */
+    bool missingOnly(string parent, string errors, string[] names...)
+    {
+        import std.algorithm.iteration : filter, map;
+        import std.algorithm.searching : startsWith;
+        import std.array : array;
+        import std.string : splitLines;
+
+        return errors.splitLines.filter!(line => line.startsWith("warning: ")).array
+            == names.map!(name => "warning: " ~ buildPath(parent, name) ~ ": /" ~ name ~ "/ does not exist").array;
+    }
+
+    /// Whether `first` and `second` are both in `text`, `first` earlier.
+    /// (Test builds only.)
+    bool comesBefore(string text, string first, string second)
+    {
+        import std.string : indexOf;
+
+        immutable firstAt = text.indexOf(first);
+        immutable secondAt = text.indexOf(second);
+        return firstAt >= 0 && secondAt >= 0 && firstAt < secondAt;
+    }
+}
+
+/// checksFixture: clean without -r; -r finds gamma, -r -f secret as well.
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable scratch = testDirectory("nestedCommon-checksFixture");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = checksFixture(scratch);
+    CommonOptions commonOptions;
+    string[2] checks()
+    {
+        auto parentDirectory = new ParentDirectory(parent);
+        return captured(scratch, (File output, File errors) {
+            const checksResult = runChecks(parentDirectory, commonOptions, No.register, output, errors);
+        });
+    }
+    assert(checks() == ["", ""]);
+    commonOptions.recursive = true;
+    auto text = checks();
+    assert(text[1].canFind("/tools/gamma/ is a git repository") && !text[1].canFind("secret"), text[1]);
+    commonOptions.force = true;
+    text = checks();
+    assert(text[1].canFind("/tools/gamma/") && text[1].canFind("/private/secret/ is a git repository"), text[1]);
+
+    assert(comesBefore("a b", "a", "b") && !comesBefore("a b", "b", "a") && !comesBefore("a", "a", "c"));
 }
 
 /// cloneNested's three outcomes, and what each leaves on disk.

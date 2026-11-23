@@ -7,20 +7,23 @@
 module pullNested;
 
 import std.stdio : File;
+import std.typecons : No;
 
 import gitRepos : GitReposEntry;
-import nestedCommon : branchAfterClone, CloneOutcome, cloneNested, CommonOptions, currentBranch,
-    ExitStatus, loadParent, parseOptions, printFindings, remoteDefaultBranch,
-    remoteHasBranch, runGit;
+import nestedCommon : branchAfterClone, ChecksOutcome, CloneOutcome, cloneNested, CommonOptions,
+    currentBranch, ExitStatus, loadParent, parseOptions, remoteDefaultBranch, remoteHasBranch,
+    runChecks, runGit, warnForceWithoutRecursive;
 import parentDirectory : ParentDirectory, RepositoryOutcome;
 
-enum usage = "Usage: pull-nested [-C <directory>] [--fix | --no-check]
+enum usage = "Usage: pull-nested [-C <directory>] [-r [-f]] [--fix | --no-check]
 
 For each nested repo in .gitrepos: clones it if it is missing and checks
 out its branch; otherwise runs git pull --ff-only, which only ever moves a
 branch forward. An existing repo is never switched to another branch.
-Problems with .gitignore and .gitrepos are reported first, except with
---no-check; a directory that isn't a nested repo is still skipped.
+First it runs check-nested's checks and reports what they find, with -r,
+-f and --fix as in check-nested, except that --fix doesn't register
+unlisted repos. --no-check skips the checks, but a directory that isn't a
+nested repo is still skipped.
 Exit status: 0 done, 1 a repo failed or problems remain (with --no-check,
 only a failed repo), 2 bad usage or a file that can't be read.
 ";
@@ -46,31 +49,33 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.usage;
     }
 
+    warnForceWithoutRecursive("pull-nested", commonOptions, errors);
+
     ParentDirectory parentDirectory;
     if (!loadParent("pull-nested", commonOptions.directory, parentDirectory, errors))
     {
         return ExitStatus.usage;
     }
-    if (commonOptions.fix)
-    {
-        parentDirectory.fix();
-        try
-        {
-            parentDirectory.write();
-        }
-        catch (Exception exception)
-        {
-            errors.writeln("pull-nested: could not write the fixed files: ", exception.msg);
-            return ExitStatus.findings;
-        }
-    }
-    // --no-check skips this report (#29 decision 13); pullOne's
-    // checkRepository() test of each repo stays, as it decides whether
-    // that repo can be pulled. The exit status then reflects only the pull.
+    // The checks first, as check-nested runs them, except that --fix
+    // doesn't register unlisted repos (#29 step 3). --no-check skips them
+    // (#29 decision 13); pullOne's checkRepository() test of each repo
+    // stays, as it decides whether that repo can be pulled. The exit
+    // status then reflects only the pull.
     bool failed = false;
     if (!commonOptions.noCheck)
     {
-        failed = printFindings(parentDirectory.check, errors) > 0;
+        const checksResult = runChecks(parentDirectory, commonOptions, No.register, output, errors);
+        with (ChecksOutcome) final switch (checksResult.outcome)
+        {
+        case clean:
+            break;
+        case findingsRemain:
+            failed = true;
+            break;
+        case writeFailed:
+            errors.writeln("pull-nested: ", checksResult.message);
+            return ExitStatus.findings;
+        }
     }
 
     bool[string] seen;
@@ -181,7 +186,7 @@ version (unittest)
     import std.file : exists, mkdirRecurse, readText, rmdirRecurse, write;
     import std.path : buildPath;
     import gitRepos : escapeField;
-    import nestedCommon : captured;
+    import nestedCommon : captured, missingOnly;
     import textFile : testDirectory;
     static import nestedCommon;
 
@@ -271,7 +276,8 @@ unittest
     gitrepos(parent, "/alpha/ " ~ remote ~ "\n");
 
     string[2] text;
-    assert(pullNested(scratch, parent, [], text) == 0, text[1]);
+    assert(pullNested(scratch, parent, [], text) == 1, text[1]); // see missingOnly
+    assert(missingOnly(parent, text[1], "alpha"), text[1]);
     assert(currentBranch(buildPath(parent, "alpha")) == "main");
 }
 
@@ -289,7 +295,8 @@ unittest
     gitrepos(parent, "blog/ " ~ remote ~ " bok-blog\n");
 
     string[2] text;
-    assert(pullNested(scratch, parent, [], text) == 0, text[1]);
+    assert(pullNested(scratch, parent, [], text) == 1, text[1]); // see missingOnly
+    assert(missingOnly(parent, text[1], "blog"), text[1]);
     immutable blog = buildPath(parent, "blog");
     assert(blog.exists && !buildPath(parent, "blog-bootstrap").exists);
     assert(currentBranch(blog) == "bok-blog");
@@ -313,7 +320,8 @@ unittest
     gitrepos(parent, "/blog/ " ~ withBlog ~ "\n/notes/ " ~ without ~ "\n");
 
     string[2] text;
-    assert(pullNested(scratch, parent, [], text) == 0, text[1]);
+    assert(pullNested(scratch, parent, [], text) == 1, text[1]); // see missingOnly
+    assert(missingOnly(parent, text[1], "blog", "notes"), text[1]);
     assert(currentBranch(buildPath(parent, "blog")) == "blog");
     assert(currentBranch(buildPath(parent, "notes")) == "master");
     assert(text[0].canFind("no branch \"notes\" on the remote; staying on master"));
@@ -333,7 +341,8 @@ unittest
     gitrepos(parent, "/My%20Repo/ " ~ escapeField(remote) ~ "\n");
 
     string[2] text;
-    assert(pullNested(scratch, parent, [], text) == 0, text[1]);
+    assert(pullNested(scratch, parent, [], text) == 1, text[1]); // see missingOnly
+    assert(missingOnly(parent, text[1], "My Repo"), text[1]);
     assert(currentBranch(buildPath(parent, "My Repo")) == "main");
 }
 
@@ -350,7 +359,8 @@ unittest
     immutable parent = buildPath(scratch, "parent");
     gitrepos(parent, "/alpha/ " ~ remote ~ "\n");
     string[2] text;
-    assert(pullNested(scratch, parent, [], text) == 0, text[1]);
+    assert(pullNested(scratch, parent, [], text) == 1, text[1]); // see missingOnly
+    assert(missingOnly(parent, text[1], "alpha"), text[1]);
 
     immutable alpha = buildPath(parent, "alpha");
     immutable before = head(alpha);
@@ -390,7 +400,8 @@ unittest
     immutable parent = buildPath(scratch, "parent");
     gitrepos(parent, "/alpha/ " ~ alphaRemote ~ "\n/beta/ " ~ betaRemote ~ "\n");
     string[2] text;
-    assert(pullNested(scratch, parent, [], text) == 0, text[1]);
+    assert(pullNested(scratch, parent, [], text) == 1, text[1]); // see missingOnly
+    assert(missingOnly(parent, text[1], "alpha", "beta"), text[1]);
 
     immutable alpha = buildPath(parent, "alpha");
     commit(alpha, "local work");
@@ -419,7 +430,8 @@ unittest
     immutable parent = buildPath(scratch, "parent");
     gitrepos(parent, "/alpha/ " ~ remote ~ "\n");
     string[2] text;
-    assert(pullNested(scratch, parent, [], text) == 0, text[1]);
+    assert(pullNested(scratch, parent, [], text) == 1, text[1]); // see missingOnly
+    assert(missingOnly(parent, text[1], "alpha"), text[1]);
 
     immutable alpha = buildPath(parent, "alpha");
     sh("-C", alpha, "checkout", "-q", "feature");
@@ -571,6 +583,72 @@ unittest
             ~ " there is nothing for it to do\n", text[1]);
         assert(text[0] == "", text[0]); // no "== /alpha/": nothing was pulled
         assert(!buildPath(parent, ".gitignore").exists);
+    }
+}
+
+/// The checks run first, with check-nested's options (#29 step 3): the
+/// report, including what only checkDisk() finds, comes before the first
+/// "== " header; -r and -f reach it; --fix repairs the files but doesn't
+/// register an unlisted repo; -f without -r gets the warning; --no-check
+/// with -r or -f is bad usage, and nothing is pulled.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import nestedCommon : capturedTogether, checksFixture, comesBefore;
+
+    immutable scratch = testDirectory("pullNested-checks-first");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = checksFixture(scratch);
+    immutable listing = buildPath(parent, ".gitrepos").readText;
+    string together(string[] extra...)
+    {
+        return capturedTogether(scratch, (File output, File errors) {
+            run(["pull-nested", "-C", parent] ~ extra, output, errors);
+        });
+    }
+
+    string[2] text;
+    assert(pullNested(scratch, parent, [], text) == 0, text[1]); // nothing to report without -r
+    assert(!text[1].canFind("warning: "), text[1]);
+
+    immutable gamma = "warning: " ~ buildPath(parent, "tools", "gamma") ~ ": /tools/gamma/ is a git repository";
+    immutable secret = "/private/secret/ is a git repository";
+    foreach (recursive; ["-r", "--recursive"])
+    {
+        assert(pullNested(scratch, parent, [recursive], text) == 1, recursive); // findings still mean 1
+        assert(text[1].canFind(gamma) && !text[1].canFind(secret), text[1]);
+        assert(comesBefore(together(recursive), gamma, "== /alpha/"), recursive);
+    }
+    foreach (force; ["-f", "--force"])
+    {
+        assert(pullNested(scratch, parent, ["-r", force], text) == 1, force);
+        assert(text[1].canFind(gamma) && text[1].canFind(secret), text[1]);
+    }
+
+    // -f alone: the shared warning, before the pull; the checks don't walk.
+    immutable noEffect = "pull-nested: warning: -f/--force has no effect without -r/--recursive\n";
+    assert(pullNested(scratch, parent, ["-f"], text) == 0, text[1]);
+    assert(text[1] == noEffect, text[1]);
+    assert(comesBefore(together("-f"), noEffect, "== /alpha/"));
+
+    // --fix repairs the block, before the pull, but registers nothing: the
+    // unlisted repos stay out of .gitrepos and are still reported.
+    buildPath(parent, ".gitignore").write("/private/\n"); // /alpha/ no longer in the block
+    immutable fixedAndPulled = together("--fix", "-r", "-f");
+    assert(comesBefore(fixedAndPulled, "fixed 1 problem(s)\n", gamma), fixedAndPulled);
+    assert(comesBefore(fixedAndPulled, secret, "== /alpha/"), fixedAndPulled);
+    assert(!fixedAndPulled.canFind("added "), fixedAndPulled);
+    assert(buildPath(parent, ".gitrepos").readText == listing);
+    assert(buildPath(parent, ".gitignore").readText.canFind("\n/alpha/\n"));
+
+    foreach (given; [["--no-check", "-r"], ["-f", "--no-check"]])
+    {
+        assert(pullNested(scratch, parent, given, text) == 2, given[0]);
+        assert(text[0] == "" && text[1].canFind("pull-nested: --no-check can't be used with -"), text[1]);
     }
 }
 

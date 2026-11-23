@@ -8,22 +8,25 @@
 module pushNested;
 
 import std.stdio : File;
+import std.typecons : No;
 
 import gitRepos : GitReposEntry;
-import nestedCommon : branchAfterClone, CommonOptions, currentBranch, ExitStatus,
-    loadParent, parseOptions, printFindings, remoteDefaultBranch, remoteHasBranch, runGit;
+import nestedCommon : branchAfterClone, ChecksOutcome, CommonOptions, currentBranch, ExitStatus,
+    loadParent, parseOptions, remoteDefaultBranch, remoteHasBranch, runChecks, runGit,
+    warnForceWithoutRecursive;
 import parentDirectory : ParentDirectory, RepositoryOutcome;
 
-enum usage = "Usage: push-nested [-C <directory>] [--fix | --no-check] [--origin-only]
-                   [--parent]
+enum usage = "Usage: push-nested [-C <directory>] [-r [-f]] [--fix | --no-check]
+                   [--origin-only] [--parent]
 
 Pushes the current branch of each nested repo in .gitrepos to every remote
 it has (only origin with --origin-only), setting the upstream to origin if
 the branch has none. Never forces. A repo on a different branch from the
 one .gitrepos means is skipped. With --parent, also pushes the parent
-directory. Problems with .gitignore and .gitrepos are reported first,
-except with --no-check; a directory that isn't a nested repo is still
-skipped. Exit status: 0 done, 1 a repo was skipped or failed or problems
+directory. First it runs check-nested's checks and reports what they
+find, with -r, -f and --fix as in check-nested, except that --fix doesn't
+register unlisted repos. --no-check skips the checks, but a directory that
+isn't a nested repo is still skipped. Exit status: 0 done, 1 a repo was skipped or failed or problems
 remain (with --no-check, only a skipped or failed repo), 2 bad usage or a
 file that can't be read.
 ";
@@ -58,31 +61,33 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.usage;
     }
 
+    warnForceWithoutRecursive("push-nested", commonOptions, errors);
+
     ParentDirectory parentDirectory;
     if (!loadParent("push-nested", commonOptions.directory, parentDirectory, errors))
     {
         return ExitStatus.usage;
     }
-    if (commonOptions.fix)
-    {
-        parentDirectory.fix();
-        try
-        {
-            parentDirectory.write();
-        }
-        catch (Exception exception)
-        {
-            errors.writeln("push-nested: could not write the fixed files: ", exception.msg);
-            return ExitStatus.findings;
-        }
-    }
-    // --no-check skips this report (#29 decision 13); pushNestedRepo's
-    // checkRepository() test of each repo stays, as it decides whether
-    // that repo can be pushed. The exit status then reflects only the push.
+    // The checks first, as check-nested runs them, except that --fix
+    // doesn't register unlisted repos (#29 step 3). --no-check skips them
+    // (#29 decision 13); pushNestedRepo's checkRepository() test of each repo
+    // stays, as it decides whether that repo can be pushed. The exit
+    // status then reflects only the push.
     bool failed = false;
     if (!commonOptions.noCheck)
     {
-        failed = printFindings(parentDirectory.check, errors) > 0;
+        const checksResult = runChecks(parentDirectory, commonOptions, No.register, output, errors);
+        with (ChecksOutcome) final switch (checksResult.outcome)
+        {
+        case clean:
+            break;
+        case findingsRemain:
+            failed = true;
+            break;
+        case writeFailed:
+            errors.writeln("push-nested: ", checksResult.message);
+            return ExitStatus.findings;
+        }
     }
 
     bool[string] seen;
@@ -700,6 +705,75 @@ unittest
             ~ " there is nothing for it to do\n", text[1]);
         assert(text[0] == "", text[0]); // no "== /alpha/": nothing was pushed
         assert(!gitIgnorePath.exists);
+    }
+}
+
+/// The checks run first, with check-nested's options (#29 step 3): the
+/// report, including what only checkDisk() finds, comes before the first
+/// "== " header; -r and -f reach it; --fix repairs the files but doesn't
+/// register an unlisted repo; -f without -r gets the warning; --no-check
+/// with -r or -f is bad usage, and nothing is pushed.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import nestedCommon : capturedTogether, checksFixture, comesBefore;
+
+    immutable scratch = testDirectory("pushNested-checks-first");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = checksFixture(scratch);
+    immutable alpha = buildPath(parent, "alpha");
+    immutable listing = buildPath(parent, ".gitrepos").readText;
+    string together(string[] extra...)
+    {
+        return capturedTogether(scratch, (File output, File errors) {
+            run(["push-nested", "-C", parent] ~ extra, output, errors);
+        });
+    }
+
+    string[2] text;
+    commit(alpha);
+    assert(pushNested(scratch, parent, [], text) == 0, text[1]); // nothing to report without -r
+    assert(!text[1].canFind("warning: "), text[1]);
+    assert(tip(buildPath(scratch, "alpha.git"), "main") == tip(alpha, "main")); // pushed
+
+    immutable gamma = "warning: " ~ buildPath(parent, "tools", "gamma") ~ ": /tools/gamma/ is a git repository";
+    immutable secret = "/private/secret/ is a git repository";
+    foreach (recursive; ["-r", "--recursive"])
+    {
+        assert(pushNested(scratch, parent, [recursive], text) == 1, recursive); // findings still mean 1
+        assert(text[1].canFind(gamma) && !text[1].canFind(secret), text[1]);
+        assert(comesBefore(together(recursive), gamma, "== /alpha/"), recursive);
+    }
+    foreach (force; ["-f", "--force"])
+    {
+        assert(pushNested(scratch, parent, ["-r", force], text) == 1, force);
+        assert(text[1].canFind(gamma) && text[1].canFind(secret), text[1]);
+    }
+
+    // -f alone: the shared warning, before the push; the checks don't walk.
+    immutable noEffect = "push-nested: warning: -f/--force has no effect without -r/--recursive\n";
+    assert(pushNested(scratch, parent, ["-f"], text) == 0, text[1]);
+    assert(text[1].canFind(noEffect) && !text[1].canFind("warning: /"), text[1]);
+    assert(comesBefore(together("-f"), noEffect, "== /alpha/"));
+
+    // --fix repairs the block, before the push, but registers nothing: the
+    // unlisted repos stay out of .gitrepos and are still reported.
+    buildPath(parent, ".gitignore").write("/private/\n"); // /alpha/ no longer in the block
+    immutable fixedAndPushed = together("--fix", "-r", "-f");
+    assert(comesBefore(fixedAndPushed, "fixed 1 problem(s)\n", gamma), fixedAndPushed);
+    assert(comesBefore(fixedAndPushed, secret, "== /alpha/"), fixedAndPushed);
+    assert(!fixedAndPushed.canFind("added "), fixedAndPushed);
+    assert(buildPath(parent, ".gitrepos").readText == listing);
+    assert(buildPath(parent, ".gitignore").readText.canFind("\n/alpha/\n"));
+
+    foreach (given; [["--no-check", "-r"], ["-f", "--no-check"]])
+    {
+        assert(pushNested(scratch, parent, given, text) == 2, given[0]);
+        assert(text[0] == "" && text[1].canFind("push-nested: --no-check can't be used with -"), text[1]);
     }
 }
 
