@@ -85,8 +85,12 @@ Teaching them what you're doing comes first. Speed comes second.
   Exactly one open issue carries the `current` label; find it with
   `gh issue list --repo pflagerd/git-stuff --label current`. Its body holds
   the tasks and steps of the work in hand, as a checklist: tick steps as
-  they're done and add new ones there. When the work moves to another
-  issue, move the label. Write other loose ends as issues of their own.
+  they're done and add new ones there. Write the steps as a numbered list
+  that is also a task list, one item per step, for example
+  `2. [ ] **A shared check function.** Move ...`, so each step has both a
+  number and a checkbox. (Decided 2026-11-22.) When the work moves to
+  another issue, move the label. Write other loose ends as issues of their
+  own.
 - Read `README.md` and the current issue at the start of a session.
 - The repo's code:
   - D programs (`*.d`) built with `make` (LDC's `ldmd2` by default, via
