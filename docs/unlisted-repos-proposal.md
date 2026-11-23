@@ -1,17 +1,28 @@
 # check-nested: report nested repos that `.gitrepos` doesn't list (proposal)
 
-Status: **all decisions made** (see Answers). **Steps 1 to 4 are
-implemented:** the default mode (direct subdirectories) in
-`ParentDirectory.checkDisk()` item 6, `check-nested --fix`
-registering what it finds (`ParentDirectory.registerUnlisted()`, using
-`entryFor()`, now in `nestedCommon.d`), `-r` / `--recursive`
-(`checkDisk(Yes.recursive)`, `unlistedRepositoriesRecursive()`, PR #28),
-and `-f` / `--force` (`checkDisk(Yes.recursive, Yes.force)`, PR #32;
-without `-r` it has no effect and prints a warning). The remaining step
-is the last in the checklist in issue
-[#15](https://github.com/pflagerd/git-stuff/issues/15). Builds on
-`docs/nested-repos-design.md` (`ParentDirectory.checkDisk()`) and follows the
-conventions of `docs/nested-commands-proposal.md`.
+Status: **implemented**, on `master`, in `parentDirectory.d` and
+`checkNested.d`. All decisions are made (see Answers); a few questions
+raised while building it are still open (see the end). Issue
+[#15](https://github.com/pflagerd/git-stuff/issues/15) tracked it in
+five steps:
+1. The default mode (direct subdirectories), `ParentDirectory.checkDisk()`
+   item 6: commit `653c699`.
+2. `check-nested --fix` registers what it finds
+   (`ParentDirectory.registerUnlisted()`, using `entryFor()`, moved to
+   `nestedCommon.d`): PR [#27](https://github.com/pflagerd/git-stuff/pull/27).
+3. `-r` / `--recursive` (`checkDisk(Yes.recursive)`,
+   `unlistedRepositoriesRecursive()`): PR
+   [#28](https://github.com/pflagerd/git-stuff/pull/28).
+4. `-f` / `--force`, with `-r` (`checkDisk(Yes.recursive, Yes.force)`;
+   without `-r` it has no effect and prints a warning): PR
+   [#32](https://github.com/pflagerd/git-stuff/pull/32).
+5. Finish: this Status, the README, and closing #15.
+
+Builds on `docs/nested-repos-design.md` (`ParentDirectory.checkDisk()`) and
+follows the conventions of `docs/nested-commands-proposal.md`. The sections
+from "The problem" to "Decisions" are the proposal as written before any
+code; where the answers chose differently, the Answers and "Rules that
+follow" describe what was built.
 
 ## The problem
 
@@ -183,6 +194,13 @@ Afterwards:
    lines (outside the block), and to walk into every repository, listed or
    not. The revision treats every `.gitignore` line the same.
 
+   - **`-f` without `-r`, answer (2026-11-22, PR #32's question 1):**
+     "-f without -r: Keep the warning". `check-nested -f` runs as it
+     would without `-f`, with the same exit status, and prints
+     `check-nested: warning: -f/--force has no effect without
+     -r/--recursive`. The alternative was to refuse it as bad usage
+     (exit status 2).
+
 2. **Answer (2026-11-22, revised):** a directory named by any `.gitignore`
    line, in the managed block or not, is not reported (from 1b). So
    `/household/`, named by a hand-written line, is not reported.
@@ -227,6 +245,36 @@ Rules that follow from these answers:
     `pflager.net`'s.
 - **`--fix` doesn't change what `-r` walks.** Since every `.gitignore`
   line counts, moving lines into the managed block changes nothing.
+- **A repository judged against another parent gets a hint, not a fix.**
+  The message says `run check-nested -C <that parent> --fix`, adding `-r`
+  when the repository is deeper than a direct subdirectory of that parent,
+  and `-f` as well when the walk went through a directory that a
+  `.gitignore` line names on the way down from that parent (PR #28 added
+  `-r`, PR #32 `-f`). The way down is counted from that parent, not from
+  the `-C` directory: that is what the suggested command would walk.
+  Which directories count as named, though, comes from every `.gitignore`
+  the walk has read, the `-C` directory's included, so a line there that
+  names a directory deep inside another repository can add an `-f` that
+  the suggested command doesn't need (still open, below).
+- **Direct entries are always asked; deeper ones only with a `.git`
+  entry** (PR #28, for speed). `checkRepository()` runs one git process,
+  so `-r` runs it on each direct entry of the `-C` directory, as the
+  default does, but below that only on a directory whose listing has a
+  `.git` entry (a directory, or a file as in a linked worktree). git
+  still has the last word. The blind spot: a deeper repository with no
+  `.git` entry at all (set up with `GIT_DIR` or `core.worktree`) isn't
+  found. On `~/desktops/default`, the `-r` walk entered about 44,700
+  directories and ran git twice.
+- **Files the walk can't read are warnings, and it goes on.** A directory
+  it can't list is reported and not walked into. A nested `.gitrepos` it
+  can't read is reported, and nothing below that parent is reported
+  against it, since what it lists is unknown. A nested `.gitignore` it
+  can't read is reported, and the directories it would name are walked
+  into.
+- **The two `bok/assets/*/.gitrepos` files, answer (2026-11-22, PR #32's
+  question 4):** "leave them". `-r -f` reports them as unreadable (their
+  lines hold directory names with raw spaces, not this format), and the
+  code stays as it is.
 
 Simulated on `~/desktops/default` on 2026-11-22, with a throwaway program
 applying the revised answers:
@@ -250,3 +298,41 @@ repository (`chromium`) in about 4 s, and `-r -f` added
 `pflager.net` itself, nothing on the way is named. `-r -f` also met two
 `.gitrepos` files inside `bok` that aren't in this format and reported
 them as unreadable.
+
+## Questions raised while building it
+
+Each step's PR ended with questions for the owner. The ones answered are
+recorded above (`-f` without `-r`, and the `bok` files). These are still
+open, listed here so they aren't lost; none of them is decided.
+
+From PR #27 (step 2):
+- `parentDirectory.d` imports `nestedCommon.d` (for `entryFor()`), and
+  `nestedCommon.d` imports `parentDirectory.d`: an import cycle. It is
+  legal D; the fallback would be a callback passed into `checkDisk()`.
+- `check-nested --fix` prints an `added /<dir>/ <url>` line for each
+  repository it registers, besides `fixed N problem(s)`.
+- A hint naming a directory with a space, such as `add-nested --url <url>
+  My Repo`, isn't shell-quoted.
+- `pullNested.d` keeps its own copy of `makeRemote`, and could import the
+  shared one.
+
+From PR #28 (step 3):
+- The hint adds `-r` when the repository isn't a direct child of its
+  parent, which goes beyond the step's text.
+- `-r` doesn't find a deeper repository that has no `.git` entry (the
+  speed trade-off in "Rules that follow").
+- A `.gitignore` line without a slash names only the directory beside it,
+  not one at any depth as git would match it (`looseDirectory()`'s rule).
+- `-r --fix` walks the tree twice: once in `registerUnlisted()`, once in
+  `checkDisk()`.
+- The `checkNested-fix-recursive` test failed once on a first run and
+  never again in 25 more; its `assert` now prints both streams if it does.
+
+From PR #32 (step 4):
+- `--no-check --fix -f` names only `--fix` in its message, because
+  `parseOptions()` refuses `--no-check --fix` before `check-nested` sees
+  its own options. Issue #29's step 2, moving `-r` and `-f` into
+  `CommonOptions`, would remove this.
+- The `-f` in a hint can be suggested when it isn't needed (see "Rules
+  that follow"). The exact rule would mean tracking which `.gitignore`
+  each name came from.

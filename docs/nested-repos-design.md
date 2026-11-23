@@ -349,15 +349,24 @@ local repositories in a temp directory (no network or SSH key needed).
   nearest directory above it that is a git repository or has a
   `.gitrepos`; only one whose parent is the `-C` directory can be
   fixable, and `registerUnlisted(Yes.recursive)` registers only those.
+  One that isn't fixable for that reason says to run `check-nested -C
+  <that parent> --fix`, with `-r` when it lies deeper than a direct entry
+  of that parent, and `-f` when the way down from that parent went
+  through a named directory.
   Below the direct entries, git is asked only about directories with a
   `.git` entry, so a walk of tens of thousands of directories runs a
-  handful of git processes.
+  handful of git processes. The cost is a blind spot: a deeper repository
+  with no `.git` entry (one set up with `GIT_DIR` or `core.worktree`) isn't
+  found. A directory the walk can't list, and a nested `.gitrepos` or
+  `.gitignore` it can't read, is a finding, and the walk goes on: nothing
+  below an unreadable `.gitrepos` is reported against it, and the
+  directories an unreadable `.gitignore` would name are walked into.
   With `checkDisk(Yes.recursive, Yes.force)` (`check-nested -r -f`, #15
   step 4) the walk also goes into the directories a `.gitignore` line
   names, listed repositories included. A named directory is never
   reported itself; what is inside it is judged by the same
   nearest-enclosing-parent rule. Without `Yes.recursive`, `force` changes
-  nothing.
+  nothing (`check-nested -f` prints a warning saying so).
 - Further criteria: TBD.
 
 ### `--fix` and exit status
