@@ -515,7 +515,7 @@ EntryResult entryFor(string parentDirectory, string argument, string branch, str
     {
     case repository:
         break;
-    case missing, notDirectory, notGitRepository, insideRepository:
+    case missing, notDirectory, danglingLink, notGitRepository, insideRepository:
         return EntryResult(EntryOutcome.notRepository, repositoryResult.message);
     }
 

@@ -138,7 +138,7 @@ bool pushNestedRepo(string parentDirectory, const GitReposEntry gitReposEntry,
     {
     case repository:
         break;
-    case missing, notDirectory, notGitRepository, insideRepository:
+    case missing, notDirectory, danglingLink, notGitRepository, insideRepository:
         problem(repositoryResult.message ~ "; skipped");
         return false;
     }
@@ -182,7 +182,7 @@ bool pushParentDirectory(string parentDirectory, const PushOptions pushOptions, 
     {
     case repository:
         break;
-    case missing, notDirectory, notGitRepository, insideRepository:
+    case missing, notDirectory, danglingLink, notGitRepository, insideRepository:
         output.flush();
         errors.writeln("push-nested: ", repositoryResult.message, "; --parent skipped");
         return false;

@@ -24,6 +24,7 @@ enum RepositoryOutcome
     repository,       /// the top level of its own git repository: a nested repo
     missing,          /// nothing there
     notDirectory,     /// a file, not a directory
+    danglingLink,     /// a symbolic link whose target can't be reached (usually: doesn't exist)
     notGitRepository, /// a directory git doesn't see as a repository
     insideRepository, /// a plain directory inside some other repository
 }
@@ -281,7 +282,7 @@ class ParentDirectory
                         ~ gitReposEntry.directory ~ " has url " ~ gitReposEntry.url, false);
                 }
                 break;
-            case missing, notDirectory, notGitRepository, insideRepository:
+            case missing, notDirectory, danglingLink, notGitRepository, insideRepository:
                 findings ~= Finding(gitReposEntry.directory, onDisk ~ ": " ~ repositoryResult.message, false);
                 break;
             }
@@ -478,7 +479,7 @@ class ParentDirectory
                 unlistedRepositories ~= UnlistedRepository(nestedDirectory, onDisk, true,
                     directory, nestedDirectory, entryFor(directory, nestedDirectory, "", ""));
                 break;
-            case missing, notDirectory, notGitRepository, insideRepository:
+            case missing, notDirectory, danglingLink, notGitRepository, insideRepository:
                 break; // not a nested repo, so nothing to register
             }
         }
@@ -686,7 +687,7 @@ class ParentDirectory
                 case repository:
                     isRepository = true;
                     break;
-                case missing, notDirectory, notGitRepository, insideRepository:
+                case missing, notDirectory, danglingLink, notGitRepository, insideRepository:
                     break;
                 }
             }
@@ -774,7 +775,8 @@ class ParentDirectory
 
     /**
      * Whether `onDisk` is a nested repo, and if not, why: it must exist, be
-     * a directory, and be the top level of its own git repository
+     * a directory (a symbolic link to one counts; one to nothing is
+     * danglingLink, #25), and be the top level of its own git repository
      * (`git rev-parse --show-toplevel` succeeds and names it, compared after
      * resolving symlinks). `directory` is how messages name it. checkDisk()
      * and the commands all use this, so "is this a nested repo?" has one
@@ -782,7 +784,7 @@ class ParentDirectory
      */
     static RepositoryResult checkRepository(string directory, string onDisk)
     {
-        import std.file : exists, isDir;
+        import std.file : exists, FileException, isDir, isSymlink;
         import std.process : execute;
         import std.string : strip;
 
@@ -790,7 +792,24 @@ class ParentDirectory
         {
             return RepositoryResult(RepositoryOutcome.missing, directory ~ " does not exist");
         }
-        if (!onDisk.isDir)
+        // exists() looks at the entry itself (lstat(2)), but isDir follows a
+        // symbolic link (stat(2)) and throws FileException when it can't.
+        // With lstat having succeeded, that only happens when the entry is
+        // a link whose target can't be reached (#25).
+        bool isDirectory;
+        try
+        {
+            isDirectory = onDisk.isDir;
+        }
+        catch (FileException exception)
+        {
+            if (!onDisk.isSymlink)
+            {
+                throw exception; // not the case above, so not ours to explain
+            }
+            return danglingLinkResult(directory, onDisk, exception.errno);
+        }
+        if (!isDirectory)
         {
             return RepositoryResult(RepositoryOutcome.notDirectory, directory ~ " is not a directory");
         }
@@ -807,6 +826,30 @@ class ParentDirectory
                 ~ ", not a repository itself");
         }
         return RepositoryResult(RepositoryOutcome.repository, "");
+    }
+
+    /// checkRepository's danglingLink result for the link at `onDisk`, which
+    /// stat(2) couldn't follow with error number `errorNumber`. The message
+    /// names the target as the link holds it (readLink, readlink(2)), which
+    /// may be relative to the link's own directory.
+    private static RepositoryResult danglingLinkResult(string directory, string onDisk, int errorNumber)
+    {
+        import core.stdc.errno : ENOENT, ENOTDIR;
+        import core.stdc.string : strerror;
+        import std.file : readLink;
+        import std.string : fromStringz;
+
+        immutable target = onDisk.readLink;
+        // ENOENT: nothing there. ENOTDIR: a path through a file, such as
+        // "file/x", so nothing there either. Anything else (a link loop,
+        // ELOOP; no permission, EACCES) gets the system's own words.
+        if (errorNumber == ENOENT || errorNumber == ENOTDIR)
+        {
+            return RepositoryResult(RepositoryOutcome.danglingLink,
+                directory ~ " is a symbolic link to " ~ target ~ " which does not exist");
+        }
+        return RepositoryResult(RepositoryOutcome.danglingLink, directory ~ " is a symbolic link to "
+            ~ target ~ " which can't be followed (" ~ strerror(errorNumber).fromStringz.idup ~ ")");
     }
 
     /// Whether any remote of the repository at `onDisk` has `url` as its
@@ -1437,10 +1480,10 @@ unittest
     }
 }
 
-/// checkRepository's five outcomes.
+/// checkRepository's six outcomes.
 unittest
 {
-    import std.file : mkdir, write;
+    import std.file : mkdir, rmdir, symlink, write;
 
     immutable directory = testDirectory("parentDirectory-checkRepository");
     scope (exit)
@@ -1457,6 +1500,13 @@ unittest
     immutable inside = buildPath(directory, "inside");
     git("init", "-q", inside);
     buildPath(inside, "folder").mkdir;
+    // Symbolic links: to a repository, to nothing, and to a directory that
+    // was there when the link was made but has been deleted since (#25).
+    symlink(buildPath(outside, "alpha"), buildPath(outside, "alphaLink"));
+    symlink(buildPath(outside, "nowhere"), buildPath(outside, "dangling"));
+    buildPath(outside, "deleted").mkdir;
+    symlink("deleted", buildPath(outside, "deletedLink")); // relative to the link's own directory
+    buildPath(outside, "deleted").rmdir;
 
     RepositoryOutcome outcomeOf(string onDisk)
     {
@@ -1466,9 +1516,38 @@ unittest
     assert(outcomeOf(buildPath(outside, "alpha")) == RepositoryOutcome.repository);
     assert(outcomeOf(buildPath(outside, "gone")) == RepositoryOutcome.missing);
     assert(outcomeOf(buildPath(outside, "file")) == RepositoryOutcome.notDirectory);
+    assert(outcomeOf(buildPath(outside, "alphaLink")) == RepositoryOutcome.repository);
+    assert(outcomeOf(buildPath(outside, "dangling")) == RepositoryOutcome.danglingLink);
+    assert(outcomeOf(buildPath(outside, "deletedLink")) == RepositoryOutcome.danglingLink);
     assert(outcomeOf(buildPath(outside, "plain")) == RepositoryOutcome.notGitRepository);
     assert(outcomeOf(buildPath(inside, "folder")) == RepositoryOutcome.insideRepository);
     assert(ParentDirectory.checkRepository("/x/", buildPath(outside, "alpha")).message == "");
+    // The message names the target as the link holds it: absolute, or relative.
+    assert(ParentDirectory.checkRepository("/x/", buildPath(outside, "dangling")).message
+        == "/x/ is a symbolic link to " ~ buildPath(outside, "nowhere") ~ " which does not exist");
+    assert(ParentDirectory.checkRepository("/x/", buildPath(outside, "deletedLink")).message
+        == "/x/ is a symbolic link to deleted which does not exist");
+}
+
+/// A link that can't be followed for another reason than a missing target,
+/// here a loop (ELOOP), is danglingLink too, with the system's own words.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.file : symlink;
+
+    immutable directory = testDirectory("parentDirectory-checkRepository-loop");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    immutable loop = buildPath(directory, "loop");
+    symlink(loop, loop); // a link to itself
+    const repositoryResult = ParentDirectory.checkRepository("/loop/", loop);
+    assert(repositoryResult.outcome == RepositoryOutcome.danglingLink);
+    assert(repositoryResult.message.canFind("/loop/ is a symbolic link to " ~ loop ~ " which can't be followed ("),
+        repositoryResult.message);
 }
 
 /// A plain folder inside a repository is not mistaken for a nested repo.

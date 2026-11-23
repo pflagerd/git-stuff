@@ -131,7 +131,7 @@ bool pullOne(string parentDirectory, const GitReposEntry gitReposEntry, File out
     {
     case repository:
         break;
-    case missing, notDirectory, notGitRepository, insideRepository:
+    case missing, notDirectory, danglingLink, notGitRepository, insideRepository:
         problem(repositoryResult.message ~ "; skipped");
         return false;
     }
