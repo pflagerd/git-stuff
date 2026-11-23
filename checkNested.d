@@ -19,8 +19,10 @@ module checkNested;
 
 import std.stdio : File;
 
-import nestedCommon : ChecksOutcome, CommonOptions, ExitStatus, loadParent, parseOptions,
-    reportNoCheckConflict, runChecks;
+import std.typecons : Yes;
+
+import nestedCommon : ChecksOutcome, CommonOptions, ExitStatus, loadParent, parseOptions, runChecks,
+    warnForceWithoutRecursive;
 import parentDirectory : ParentDirectory;
 
 enum usage = "Usage: check-nested [-C <directory>] [-r [-f]] [--fix]
@@ -50,31 +52,16 @@ usage or a file that can't be read.
 ExitStatus run(string[] args, File output, File errors)
 {
     CommonOptions commonOptions;
-    // -r and -f are fields of CommonOptions, since runChecks() reads them,
-    // but for now only check-nested accepts them, so it passes them here
-    // as its own options (#29, step 2).
-    const parsed = parseOptions(args, commonOptions, output, errors, usage,
-        "recursive|r", "Look below the direct subdirectories too.", &commonOptions.recursive,
-        "force|f", "With -r, also look inside the directories that .gitignore names.", &commonOptions.force);
+    const parsed = parseOptions(args, commonOptions, output, errors, usage);
     if (!parsed.proceed)
     {
         return parsed.exitStatus;
     }
     // #29 decision 12: with the checks off, check-nested has nothing left
-    // to do. parseOptions has already refused --no-check --fix; -r and -f
-    // are check-nested's own options, so they are named here.
+    // to do. parseOptions has already refused --no-check with --fix, -r or
+    // -f, so here it was given alone.
     if (commonOptions.noCheck)
     {
-        string[] ownCheckOptions;
-        if (commonOptions.recursive)
-        {
-            ownCheckOptions ~= "-r/--recursive";
-        }
-        if (commonOptions.force)
-        {
-            ownCheckOptions ~= "-f/--force";
-        }
-        reportNoCheckConflict("check-nested", ownCheckOptions, errors);
         errors.writeln("check-nested: --no-check leaves nothing to do: checking is all check-nested does");
         return ExitStatus.usage;
     }
@@ -83,13 +70,7 @@ ExitStatus run(string[] args, File output, File errors)
         errors.writeln("check-nested: unexpected argument '", args[1], "'");
         return ExitStatus.usage;
     }
-    // The proposal's answer 1b: -f without -r has no effect, because the
-    // default mode doesn't walk. It is not refused, but she is told, in
-    // case she meant -r -f. The exit status doesn't change.
-    if (commonOptions.force && !commonOptions.recursive)
-    {
-        errors.writeln("check-nested: warning: -f/--force has no effect without -r/--recursive");
-    }
+    warnForceWithoutRecursive("check-nested", commonOptions, errors);
 
     ParentDirectory parentDirectory;
     if (!loadParent("check-nested", commonOptions.directory, parentDirectory, errors))
@@ -97,7 +78,9 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.usage;
     }
 
-    const checksResult = runChecks(parentDirectory, commonOptions, output, errors);
+    // check-nested --fix registers unlisted repos; the other commands don't
+    // yet (#29 step 3).
+    const checksResult = runChecks(parentDirectory, commonOptions, Yes.register, output, errors);
     with (ChecksOutcome) final switch (checksResult.outcome)
     {
     case clean:
@@ -576,21 +559,26 @@ unittest
     assert(checkNested(scratch, parent, ["--no-check"], text) == 2);
     assert(text[0] == "" && text[1] == nothingToDo, text[1]);
 
+    // Since #29 step 3, -r and -f are refused by parseOptions, as --fix is,
+    // so the message is the same in every command, without nothingToDo.
     foreach (recursive; ["-r", "--recursive"])
     {
         assert(checkNested(scratch, parent, ["--no-check", recursive], text) == 2, recursive);
         assert(text[1] == "check-nested: --no-check can't be used with -r/--recursive: with the"
-            ~ " checks off, there is nothing for it to do\n" ~ nothingToDo, text[1]);
+            ~ " checks off, there is nothing for it to do\n", text[1]);
     }
     foreach (force; ["-f", "--force"])
     {
         assert(checkNested(scratch, parent, ["--no-check", force], text) == 2, force);
         assert(text[0] == "" && text[1] == "check-nested: --no-check can't be used with -f/--force: with"
-            ~ " the checks off, there is nothing for it to do\n" ~ nothingToDo, text[1]);
+            ~ " the checks off, there is nothing for it to do\n", text[1]);
     }
     assert(checkNested(scratch, parent, ["-f", "--no-check", "-r"], text) == 2);
     assert(text[1] == "check-nested: --no-check can't be used with -r/--recursive, -f/--force: with"
-        ~ " the checks off, there is nothing for them to do\n" ~ nothingToDo, text[1]);
+        ~ " the checks off, there is nothing for them to do\n", text[1]);
+    assert(checkNested(scratch, parent, ["--fix", "--no-check", "-r"], text) == 2);
+    assert(text[1] == "check-nested: --no-check can't be used with --fix, -r/--recursive: with"
+        ~ " the checks off, there is nothing for them to do\n", text[1]);
 
     assert(checkNested(scratch, parent, ["--fix", "--no-check"], text) == 2);
     assert(text[1].canFind("--no-check can't be used with --fix"), text[1]);

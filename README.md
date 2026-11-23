@@ -168,8 +168,10 @@ make DC=dmd
 | Option | Meaning |
 |---|---|
 | `-C <directory>` | Work in that parent directory instead of the current one (like `git -C`). |
-| `--fix` | First repair what can be repaired in `.gitignore` and `.gitrepos` (sort, de-duplicate, move nested-repo lines into the managed block, add missing block entries), and write both files. `check-nested --fix` also registers git repositories that `.gitrepos` doesn't list yet (see [below](#check-nested--r--f)). |
-| `--no-check` | Don't check the two files or report their problems; the command only does its own job. It can't be combined with `--fix`, and `check-nested` refuses it, since checking is all it does: both are bad usage (exit status 2). |
+| `--fix` | First repair what can be repaired in `.gitignore` and `.gitrepos` (sort, de-duplicate, move nested-repo lines into the managed block, add missing block entries), and write both files. `check-nested --fix` also registers git repositories that `.gitrepos` doesn't list yet (see [below](#check-nested--r--f)); the other commands' `--fix` doesn't, so those stay reported. |
+| `-r`, `--recursive` | The checks also look for unlisted git repositories below the direct subdirectories, as `check-nested -r` does (see [below](#check-nested--r--f)). |
+| `-f`, `--force` | With `-r`, the checks also look inside the directories that a `.gitignore` line names, as `check-nested -r -f` does. Without `-r` it has no effect, and you get a warning saying so. |
+| `--no-check` | Don't run the checks or report their problems; the command only does its own job. It can't be combined with `--fix`, `-r` or `-f`, and `check-nested` refuses it, since checking is all it does: both are bad usage (exit status 2), and the message names the options it can't be combined with. |
 | `-h`, `--help` | Print usage. |
 
 | Exit status | Meaning |
@@ -182,10 +184,12 @@ Problems are printed as `warning:` lines on standard error, marked
 `(fixable with --fix)` where that applies. Nested directories are given
 relative to the parent directory, in any slash form (`alpha`, `/alpha/`,
 `tools/alpha`); `.` and `..` aren't allowed. Besides its own job, each
-command reports the problems in the two files, as `check-nested` would:
-`pull-nested` and `push-nested` before they start, `add-nested` and
-`remove-nested` afterwards, on the files as written. `--no-check` leaves
-that report out. Git always runs with an argument list, never through a
+command runs checks and reports what they find. `pull-nested` and
+`push-nested` run `check-nested`'s checks before they start (the two
+files, the nested repos on disk, and repositories `.gitrepos` doesn't
+list), with the `-r`, `-f` and `--fix` you give. `add-nested` and
+`remove-nested` check only the two files, afterwards, on the files as
+written. `--no-check` leaves the checks out. Git always runs with an argument list, never through a
 shell, so names with spaces are safe.
 
 ### `add-nested [--branch <name>] [--url <url>] <nested directory>...`
@@ -232,10 +236,14 @@ own messages shown as they happen:
   existing repo: if you're on a different branch from the one `.gitrepos`
   means, it warns and pulls the branch you're on.
 
-A failure in one repo doesn't stop the others. Problems with the two files
-are reported first but don't stop the pull; with `--no-check` they aren't
-looked for, but a directory that isn't a nested repo is still skipped. Git
-runs with your terminal, so ssh can still ask for a passphrase.
+A failure in one repo doesn't stop the others. `check-nested`'s checks run
+first and their problems are reported, but they don't stop the pull. For
+now that includes a missing repo it is about to clone: it is reported as
+`does not exist`, and the exit status is 1 although the clone works
+([#29](https://github.com/pflagerd/git-stuff/issues/29) step 5 leaves
+that warning out). With `--no-check` the checks don't run, but a directory
+that isn't a nested repo is still skipped. Git runs with your terminal, so
+ssh can still ask for a passphrase.
 
 ### `push-nested [--origin-only] [--parent]`
 
@@ -258,9 +266,11 @@ and reported, and you pull first.
 - **Uncommitted changes** get a note: only what's committed is pushed.
 - **`--parent`** also pushes the parent directory itself, after the nested
   repos, by the same rules.
-- **`--no-check`** leaves out the report on the two files that comes
-  before the pushes. The skips above still happen: they decide whether a
-  repo can be pushed.
+- **The checks** (`check-nested`'s, with your `-r`, `-f` and `--fix`) run
+  before the pushes, and their report comes first. A repo that is
+  skipped is reported there too, then again when it's skipped.
+- **`--no-check`** leaves out the checks and their report. The skips
+  above still happen: they decide whether a repo can be pushed.
 
 Design: `docs/push-nested-proposal.md`.
 
@@ -272,9 +282,9 @@ nothing, no remote with the listed url), and with git repositories that `.gitrep
 (below). It never uses the network, and prints nothing when there's
 nothing to report. With `--fix` it repairs what it can, writes both files,
 and prints `fixed N problem(s)`. `--no-check` is bad usage here (exit
-status 2), since checking is all `check-nested` does. The message names
-the `-r` and `-f` you gave with it (or only `--fix`, if you gave that
-too).
+status 2), since checking is all `check-nested` does. Given with `--fix`,
+`-r` or `-f`, the message names them, as in every command; given alone,
+it says there is nothing left to do.
 
 It also reports each git repository directly in the parent directory that
 `.gitrepos` doesn't list. `--fix` registers it, as `add-nested <dir>` would
