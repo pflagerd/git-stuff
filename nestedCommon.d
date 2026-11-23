@@ -709,6 +709,42 @@ unittest
     });
 }
 
+/// -r and -f are CommonOptions fields, but parseOptions doesn't parse them
+/// itself: a command that doesn't pass them as its own options (all but
+/// check-nested, #29 step 2) still refuses them (exit 2). check-nested's
+/// way, passing the fields as `extra`, sets them.
+unittest
+{
+    import std.algorithm.searching : canFind;
+
+    immutable directory = testDirectory("nestedCommon-options-check");
+    scope (exit)
+    {
+        directory.rmdirRecurse;
+    }
+
+    foreach (option; ["-r", "--recursive", "-f", "--force"])
+    {
+        auto text = captured(directory, (File output, File errors) {
+            string[] args = ["pull-nested", option];
+            CommonOptions commonOptions;
+            const parsed = parseOptions(args, commonOptions, output, errors, "usage");
+            assert(!parsed.proceed && parsed.exitStatus == ExitStatus.usage, option);
+            assert(!commonOptions.recursive && !commonOptions.force, option);
+        });
+        assert(text[0] == "" && text[1].canFind("pull-nested: "), option);
+    }
+
+    captured(directory, (File output, File errors) {
+        string[] args = ["check-nested", "-r", "-f"];
+        CommonOptions commonOptions;
+        assert(parseOptions(args, commonOptions, output, errors, "usage",
+            "recursive|r", "", &commonOptions.recursive,
+            "force|f", "", &commonOptions.force).proceed);
+        assert(commonOptions.recursive && commonOptions.force && args == ["check-nested"]);
+    });
+}
+
 /// -h/--help prints usage to output and exits 0; nothing goes to errors.
 unittest
 {
@@ -859,6 +895,113 @@ unittest
     assert(text[0] == "");
     assert(text[1] == "warning: .gitrepos: entries are not sorted by directory (fixable with --fix)\n"
         ~ "warning: .gitrepos: /a/ is listed 2 times\n");
+}
+
+// --- tests: the checks -----------------------------------------------------------
+
+/// runChecks: clean and findingsRemain, and -r, -f and --fix read from
+/// CommonOptions. tools/gamma is found only with -r; private/secret, inside
+/// a directory .gitignore names, only with -r -f. --fix registers both.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.file : exists, write;
+
+    immutable scratch = testDirectory("nestedCommon-runChecks");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    // Each clone is named as `git clone` would name it, so --fix leaves the
+    // branch out (branchCanBeOmitted).
+    void cloneTo(string remote, string clone)
+    {
+        git("clone", "-q", "-b", "main", remote, clone);
+        git("-C", clone, "remote", "set-head", "origin", "main"); // not left to clone
+    }
+    immutable gammaRemote = makeRemote(scratch, "gamma", "main");
+    immutable secretRemote = makeRemote(scratch, "secret", "main");
+    immutable parent = buildPath(scratch, "parent");
+    cloneTo(gammaRemote, buildPath(parent, "tools", "gamma"));
+    cloneTo(secretRemote, buildPath(parent, "private", "secret"));
+    immutable ignoreText = "/private/\n";
+    buildPath(parent, ".gitignore").write(ignoreText);
+
+    ChecksResult checksResult;
+    string[2] checks(CommonOptions commonOptions)
+    {
+        auto parentDirectory = new ParentDirectory(parent);
+        return captured(scratch, (File output, File errors) {
+            checksResult = runChecks(parentDirectory, commonOptions, output, errors);
+        });
+    }
+
+    CommonOptions commonOptions;
+    auto text = checks(commonOptions); // default: direct entries only
+    assert(checksResult.outcome == ChecksOutcome.clean && checksResult.message == "");
+    assert(text[0] == "" && text[1] == "");
+
+    commonOptions.recursive = true;
+    text = checks(commonOptions);
+    assert(checksResult.outcome == ChecksOutcome.findingsRemain && checksResult.message == "");
+    assert(text[0] == "" && text[1].canFind("/tools/gamma/") && !text[1].canFind("/private/secret/"));
+
+    commonOptions.force = true;
+    text = checks(commonOptions);
+    assert(checksResult.outcome == ChecksOutcome.findingsRemain);
+    assert(text[0] == "" && text[1].canFind("/tools/gamma/") && text[1].canFind("/private/secret/"));
+    assert(buildPath(parent, ".gitignore").readText == ignoreText); // untouched without --fix
+    assert(!buildPath(parent, ".gitrepos").exists);
+
+    commonOptions.fix = true;
+    text = checks(commonOptions);
+    assert(checksResult.outcome == ChecksOutcome.clean, text[1]);
+    assert(text[0] == "added /private/secret/ " ~ secretRemote ~ "\nadded /tools/gamma/ " ~ gammaRemote
+        ~ "\nfixed 2 problem(s)\n", text[0]);
+    assert(text[1] == "");
+    assert(buildPath(parent, ".gitrepos").readText
+        == "/private/secret/ " ~ secretRemote ~ "\n/tools/gamma/ " ~ gammaRemote ~ "\n");
+}
+
+/// runChecks: writeFailed when --fix can't write. The message is for the
+/// caller to print after its name; nothing else is printed, and the files
+/// are unchanged.
+unittest
+{
+    import std.algorithm.searching : startsWith;
+    import std.conv : octal;
+    import std.file : exists, getAttributes, mkdirRecurse, setAttributes, write;
+
+    immutable scratch = testDirectory("nestedCommon-runChecks-writeFailed");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = buildPath(scratch, "parent");
+    parent.mkdirRecurse;
+    immutable reposText = "/gone/ g.git\n"; // --fix would add /gone/ to .gitignore's block
+    buildPath(parent, ".gitrepos").write(reposText);
+    immutable attributes = parent.getAttributes;
+    parent.setAttributes(octal!555); // no new files in parent, so writeAtomically fails
+    scope (exit)
+    {
+        parent.setAttributes(attributes); // runs before the rmdirRecurse above
+    }
+
+    CommonOptions commonOptions;
+    commonOptions.fix = true;
+    auto parentDirectory = new ParentDirectory(parent);
+    ChecksResult checksResult;
+    auto text = captured(scratch, (File output, File errors) {
+        checksResult = runChecks(parentDirectory, commonOptions, output, errors);
+    });
+    assert(checksResult.outcome == ChecksOutcome.writeFailed);
+    assert(checksResult.message.startsWith("could not write the fixed files: "), checksResult.message);
+    assert(text[0] == "" && text[1] == "");
+    assert(buildPath(parent, ".gitrepos").readText == reposText);
+    assert(!buildPath(parent, ".gitignore").exists);
 }
 
 // --- tests: branch rules -------------------------------------------------------

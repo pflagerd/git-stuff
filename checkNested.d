@@ -244,6 +244,40 @@ unittest
     assert(text[1].canFind("/gone/ does not exist") && !text[1].canFind("(fixable with --fix)"));
 }
 
+/// --fix that can't write: exit 1, one line naming check-nested, nothing
+/// on the output, the files unchanged.
+unittest
+{
+    import std.algorithm.searching : count, endsWith, startsWith;
+    import std.conv : octal;
+    import std.file : getAttributes, setAttributes;
+
+    immutable scratch = testDirectory("checkNested-fix-write-failed");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = buildPath(scratch, "parent");
+    parent.mkdirRecurse;
+    immutable reposText = "/gone/ g.git\n";
+    buildPath(parent, ".gitrepos").write(reposText);
+    immutable attributes = parent.getAttributes;
+    parent.setAttributes(octal!555); // no new files in parent
+    scope (exit)
+    {
+        parent.setAttributes(attributes); // runs before the rmdirRecurse above
+    }
+
+    string[2] text;
+    assert(checkNested(scratch, parent, ["--fix"], text) == 1);
+    assert(text[0] == "");
+    assert(text[1].startsWith("check-nested: could not write the fixed files: ")
+        && text[1].count('\n') == 1 && text[1].endsWith("\n"), text[1]); // one line, no warnings
+    assert(buildPath(parent, ".gitrepos").readText == reposText);
+    assert(!buildPath(parent, ".gitignore").exists);
+}
+
 /// Unlisted nested repos: reported, fixable only when add-nested could
 /// register them unaided; --fix registers those in both files, says so,
 /// counts them, and a second run doesn't report them.
