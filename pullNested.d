@@ -452,6 +452,37 @@ unittest
     assert(text[1].canFind("/alpha/ is not a git repository") && text[1].canFind("skipped"));
 }
 
+/// An entry that is a symbolic link to nothing (#25) is skipped with a
+/// warning, like a file: not cloned, though its url would clone, and the
+/// link is left alone. The other repos are still pulled.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.file : isSymlink, readLink, symlink;
+
+    immutable scratch = testDirectory("pullNested-dangling-link");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable alphaRemote = makeRemote(scratch, "alpha", "main");
+    immutable betaRemote = makeRemote(scratch, "beta", "main");
+    immutable parent = buildPath(scratch, "parent");
+    gitrepos(parent, "/alpha/ " ~ alphaRemote ~ "\n/beta/ " ~ betaRemote ~ "\n");
+    immutable alpha = buildPath(parent, "alpha");
+    immutable nowhere = buildPath(parent, "nowhere");
+    symlink(nowhere, alpha);
+
+    string[2] text;
+    assert(pullNested(scratch, parent, [], text) == 1);
+    assert(text[1].canFind("pull-nested: /alpha/: /alpha/ is a symbolic link to " ~ nowhere
+        ~ " which does not exist; skipped\n"), text[1]);
+    assert(!text[1].canFind("Exception"), text[1]);
+    assert(alpha.isSymlink && alpha.readLink == nowhere && !nowhere.exists); // no clone, there or behind the link
+    assert(buildPath(parent, "beta", ".git").exists); // the next repo was still cloned
+}
+
 /// A listed branch the remote doesn't have: the clone stays, the error says why.
 unittest
 {
