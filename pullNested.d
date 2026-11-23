@@ -477,7 +477,7 @@ unittest
     string[2] text;
     assert(pullNested(scratch, parent, [], text) == 1);
     assert(text[1].canFind("pull-nested: /alpha/: /alpha/ is a symbolic link to " ~ nowhere
-        ~ " which does not exist; skipped\n"), text[1]);
+        ~ ", which does not exist; skipped\n"), text[1]);
     assert(!text[1].canFind("Exception"), text[1]);
     assert(alpha.isSymlink && alpha.readLink == nowhere && !nowhere.exists); // no clone, there or behind the link
     assert(buildPath(parent, "beta", ".git").exists); // the next repo was still cloned

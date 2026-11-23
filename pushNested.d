@@ -616,7 +616,7 @@ unittest
     string[2] text;
     assert(pushNested(scratch, pushSetUp.parent, [], text) == 1);
     assert(text[1].canFind("push-nested: /alpha/: /alpha/ is a symbolic link to " ~ nowhere
-        ~ " which does not exist; skipped\n"), text[1]);
+        ~ ", which does not exist; skipped\n"), text[1]);
     assert(!text[1].canFind("Exception"), text[1]);
     assert(tip(pushSetUp.origin, "main") == before && tip(pushSetUp.mirror, "main") == before);
     assert(tip(moved, "main") != before); // the commit that wasn't pushed

@@ -832,10 +832,10 @@ class ParentDirectory
         if (errorNumber == ENOENT || errorNumber == ENOTDIR)
         {
             return RepositoryResult(RepositoryOutcome.danglingLink,
-                directory ~ " is a symbolic link to " ~ target ~ " which does not exist");
+                directory ~ " is a symbolic link to " ~ target ~ ", which does not exist");
         }
         return RepositoryResult(RepositoryOutcome.danglingLink, directory ~ " is a symbolic link to "
-            ~ target ~ " which can't be followed (" ~ strerror(errorNumber).fromStringz.idup ~ ")");
+            ~ target ~ ", which can't be followed (" ~ strerror(errorNumber).fromStringz.idup ~ ")");
     }
 
     /// Whether any remote of the repository at `onDisk` has `url` as its
@@ -1510,9 +1510,9 @@ unittest
     assert(ParentDirectory.checkRepository("/x/", buildPath(outside, "alpha")).message == "");
     // The message names the target as the link holds it: absolute, or relative.
     assert(ParentDirectory.checkRepository("/x/", buildPath(outside, "dangling")).message
-        == "/x/ is a symbolic link to " ~ buildPath(outside, "nowhere") ~ " which does not exist");
+        == "/x/ is a symbolic link to " ~ buildPath(outside, "nowhere") ~ ", which does not exist");
     assert(ParentDirectory.checkRepository("/x/", buildPath(outside, "deletedLink")).message
-        == "/x/ is a symbolic link to deleted which does not exist");
+        == "/x/ is a symbolic link to deleted, which does not exist");
 }
 
 /// A link that can't be followed for another reason than a missing target,
@@ -1532,7 +1532,7 @@ unittest
     symlink(loop, loop); // a link to itself
     const repositoryResult = ParentDirectory.checkRepository("/loop/", loop);
     assert(repositoryResult.outcome == RepositoryOutcome.danglingLink);
-    assert(repositoryResult.message.canFind("/loop/ is a symbolic link to " ~ loop ~ " which can't be followed ("),
+    assert(repositoryResult.message.canFind("/loop/ is a symbolic link to " ~ loop ~ ", which can't be followed ("),
         repositoryResult.message);
 }
 

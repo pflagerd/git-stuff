@@ -265,7 +265,7 @@ unittest
     symlink(nowhere, alpha);
     buildPath(parent, ".gitrepos").write("/alpha/ git@example.com:a.git\n");
     immutable danglingLine = "warning: " ~ alpha ~ ": /alpha/ is a symbolic link to " ~ nowhere
-        ~ " which does not exist\n"; // a whole line, so no "(fixable with --fix)"
+        ~ ", which does not exist\n"; // a whole line, so no "(fixable with --fix)"
 
     string[2] text;
     assert(checkNested(scratch, parent, [], text) == 1);
