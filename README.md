@@ -183,13 +183,17 @@ make DC=dmd
 Problems are printed as `warning:` lines on standard error, marked
 `(fixable with --fix)` where that applies. Nested directories are given
 relative to the parent directory, in any slash form (`alpha`, `/alpha/`,
-`tools/alpha`); `.` and `..` aren't allowed. Besides its own job, each
-command runs checks and reports what they find. `pull-nested` and
-`push-nested` run `check-nested`'s checks before they start (the two
-files, the nested repos on disk, and repositories `.gitrepos` doesn't
-list), with the `-r`, `-f` and `--fix` you give. `add-nested` and
-`remove-nested` check only the two files, afterwards, on the files as
-written. `--no-check` leaves the checks out. Git always runs with an argument list, never through a
+`tools/alpha`); `.` and `..` aren't allowed. Before its own job, each
+command runs `check-nested`'s checks on the whole parent directory and
+reports what they find: the two files, the nested repos on disk, and
+repositories `.gitrepos` doesn't list, with the `-r`, `-f` and `--fix`
+you give. Only `check-nested --fix` registers those repositories; in the
+other commands they stay reported, still marked `(fixable with --fix)`,
+which is what `check-nested --fix` would do. For now the report can
+include what the command is about to change, such as a repo `pull-nested`
+is about to clone, and those findings count towards exit status 1 too
+([#29](https://github.com/pflagerd/git-stuff/issues/29) steps 5 and 6
+change that). `--no-check` leaves the checks out. Git always runs with an argument list, never through a
 shell, so names with spaces are safe.
 
 ### `add-nested [--branch <name>] [--url <url>] <nested directory>...`
@@ -207,8 +211,12 @@ each.
   `pull-nested` would arrive at it by itself from a fresh clone (decision 3
   in `docs/nested-commands-proposal.md`); `--branch` is always recorded.
 - `--branch` and `--url` need exactly one nested directory.
-- Afterwards it reports the problems left in the two files as written,
-  unless you give `--no-check`.
+- **The checks** run once the arguments are found to be right, and before
+  anything is written or cloned, unless you give `--no-check`. With
+  `--fix`, the repairs are written first, and the new entries are then
+  added to the repaired files. For now the clone you are adding is
+  reported as unlisted, since the checks look before it's added, and the
+  exit status is then 1.
 
 **`add-nested [--branch <name>] --clone <url> [<nested directory>]`** clones
 `<url>` first, into the nested directory given or else the one `git clone`
@@ -344,8 +352,10 @@ Removes each nested directory from `.gitrepos` and from the managed block of
 `.gitignore`, printing `removed /alpha/ from ...` for each. **It never
 deletes a directory**; if one is still on disk, the message says so. A
 directory in neither file gets a warning, and the others are still removed.
-The files are only rewritten if something changed. Afterwards it reports
-the problems left in the two files, unless you give `--no-check`.
+The files are only rewritten if something changed. The checks run first,
+unless you give `--no-check`, so the directories you are removing are
+still listed while they run. With `--fix`, the repairs are written first,
+and the directories are then removed from the repaired files.
 
 ## Debugging
 

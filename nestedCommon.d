@@ -1272,6 +1272,26 @@ version (unittest)
         return path.readText;
     }
 
+    /**
+     * Whether the only warnings in `errors` are the checks' "does not
+     * exist", one for each of `names` in `parent`, in order. Since #29 step
+     * 3 the checks run before each command's work, so pull-nested reports
+     * a repo it is about to clone as missing, and remove-nested one it is
+     * about to remove; with findings, the exit status is 1. Step 5 leaves
+     * the findings the work resolves out (decision 5), and step 6 stops
+     * findings changing the exit status (decision 2). (Test builds only.)
+     */
+    bool missingOnly(string parent, string errors, string[] names...)
+    {
+        import std.algorithm.iteration : filter, map;
+        import std.algorithm.searching : startsWith;
+        import std.array : array;
+        import std.string : splitLines;
+
+        return errors.splitLines.filter!(line => line.startsWith("warning: ")).array
+            == names.map!(name => "warning: " ~ buildPath(parent, name) ~ ": /" ~ name ~ "/ does not exist").array;
+    }
+
     /// Whether `first` and `second` are both in `text`, `first` earlier.
     /// (Test builds only.)
     bool comesBefore(string text, string first, string second)

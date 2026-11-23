@@ -7,18 +7,24 @@
 module removeNested;
 
 import std.stdio : File;
+import std.typecons : No;
 
-import nestedCommon : CommonOptions, ExitStatus, loadParent, parseOptions, printFindings;
+import nestedCommon : ChecksOutcome, CommonOptions, ExitStatus, loadParent, parseOptions, runChecks,
+    warnForceWithoutRecursive;
 import parentDirectory : ParentDirectory;
 
-enum usage = "Usage: remove-nested [-C <directory>] [--fix | --no-check] <nested directory>...
+enum usage = "Usage: remove-nested [-C <directory>] [-r [-f]] [--fix | --no-check]
+                     <nested directory>...
 
 Removes each nested directory from .gitrepos and from the managed block of
-.gitignore. The directory itself is never touched. Afterwards, problems
-left in the two files are reported, except with --no-check. Exit status:
-0 done, 1 something wasn't registered or problems remain (with --no-check,
-only something not registered or a failed write), 2 bad usage or a file
-that can't be read.
+.gitignore. The directory itself is never touched. First, check-nested's
+checks run on the whole directory and report what they find, with -r, -f
+and --fix as in check-nested, except that --fix doesn't register unlisted
+repos. --no-check skips them.
+
+Exit status: 0 done, 1 something wasn't registered or problems remain
+(with --no-check, only something not registered or a failed write), 2 bad
+usage or a file that can't be read.
 ";
 
 /**
@@ -49,6 +55,7 @@ ExitStatus run(string[] args, File output, File errors)
         errors.writeln("remove-nested: no nested directory given");
         return ExitStatus.usage;
     }
+    warnForceWithoutRecursive("remove-nested", commonOptions, errors);
 
     ParentDirectory parentDirectory;
     if (!loadParent("remove-nested", commonOptions.directory, parentDirectory, errors))
@@ -56,13 +63,30 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.usage;
     }
 
-    bool changed = false;
-    if (commonOptions.fix)
+    // The checks first, on the whole parent (#29 decisions 1 and 10, step
+    // 3), so in this run the directories being removed are still listed.
+    // --fix writes its repairs here, registering nothing, and the removal
+    // below goes on from the fixed objects. --no-check skips the checks;
+    // the exit status then reflects only the removal: a name that wasn't
+    // registered, or a failed write.
+    bool remaining = false;
+    if (!commonOptions.noCheck)
     {
-        changed = parentDirectory.check.any!(finding => finding.fixable);
-        parentDirectory.fix();
+        const checksResult = runChecks(parentDirectory, commonOptions, No.register, output, errors);
+        with (ChecksOutcome) final switch (checksResult.outcome)
+        {
+        case clean:
+            break;
+        case findingsRemain:
+            remaining = true;
+            break;
+        case writeFailed:
+            errors.writeln("remove-nested: ", checksResult.message);
+            return ExitStatus.findings; // nothing was removed
+        }
     }
 
+    bool changed = false;
     bool notFound = false;
     foreach (argument; args[1 .. $])
     {
@@ -99,15 +123,6 @@ ExitStatus run(string[] args, File output, File errors)
             return ExitStatus.findings;
         }
     }
-    output.flush(); // before the warnings that follow on the error stream
-
-    // --no-check skips this report (#29); the exit status then reflects
-    // only the removal: a name that wasn't registered, or a failed write.
-    bool remaining = false;
-    if (!commonOptions.noCheck)
-    {
-        remaining = printFindings(parentDirectory.check, errors) > 0;
-    }
     return notFound || remaining ? ExitStatus.findings : ExitStatus.ok;
 }
 
@@ -130,7 +145,7 @@ version (unittest)
 {
     import std.file : exists, mkdirRecurse, readText, rmdirRecurse, write;
     import std.path : buildPath;
-    import nestedCommon : captured;
+    import nestedCommon : captured, missingOnly;
     import textFile : testDirectory;
     import gitIgnore : beginMarker, endMarker;
 
@@ -146,6 +161,9 @@ version (unittest)
     }
 
     /// A parent directory registering /alpha/ and /beta/ in both files.
+    /// Neither is on disk, so since #29 step 3 the checks before the
+    /// removal report both as missing (see missingOnly), and the exit
+    /// status is 1.
     private string twoRepos(string scratch)
     {
         immutable parent = buildPath(scratch, "parent");
@@ -168,8 +186,9 @@ unittest
 
     immutable parent = twoRepos(scratch);
     string[2] text;
-    assert(removeNested(scratch, parent, ["alpha"], text) == 0);
-    assert(text[0] == "removed /alpha/ from .gitrepos and .gitignore\n" && text[1] == "");
+    assert(removeNested(scratch, parent, ["alpha"], text) == 1); // see twoRepos
+    assert(text[0] == "removed /alpha/ from .gitrepos and .gitignore\n");
+    assert(missingOnly(parent, text[1], "alpha", "beta"), text[1]);
     assert(buildPath(parent, ".gitrepos").readText == "/beta/ b.git dev\n");
     assert(buildPath(parent, ".gitignore").readText
         == "*.o\n" ~ beginMarker ~ "\n/beta/\n" ~ endMarker ~ "\n");
@@ -186,7 +205,8 @@ unittest
 
     immutable parent = twoRepos(scratch);
     string[2] text;
-    assert(removeNested(scratch, parent, ["/alpha/", "beta/"], text) == 0);
+    assert(removeNested(scratch, parent, ["/alpha/", "beta/"], text) == 1); // see twoRepos
+    assert(missingOnly(parent, text[1], "alpha", "beta"), text[1]);
     assert(buildPath(parent, ".gitrepos").readText == "");
     assert(buildPath(parent, ".gitignore").readText == "*.o\n");
 }
@@ -208,7 +228,9 @@ unittest
     buildPath(alpha, "keep.txt").write("still here\n");
 
     string[2] text;
-    assert(removeNested(scratch, parent, ["alpha"], text) == 0);
+    // The checks report alpha (not a git repository) and beta (missing).
+    assert(removeNested(scratch, parent, ["alpha"], text) == 1, text[1]);
+    assert(text[1].canFind("/alpha/ is not a git repository"), text[1]);
     assert(text[0].canFind("is still on disk (remove-nested never deletes directories)"));
     assert(buildPath(alpha, "keep.txt").readText == "still here\n");
 }
@@ -258,7 +280,7 @@ unittest
     assert(DirEntry(ignoreFile).statBuf.st_ino == ignoreInode);
 
     // And a real removal does rewrite (so the check above can tell).
-    assert(removeNested(scratch, parent, ["alpha"], text) == 0);
+    assert(removeNested(scratch, parent, ["alpha"], text) == 1); // see twoRepos
     assert(DirEntry(reposFile).statBuf.st_ino != reposInode);
 }
 
@@ -277,11 +299,16 @@ unittest
     buildPath(parent, ".gitrepos").write("/beta/ b.git\n");
 
     string[2] text;
-    assert(removeNested(scratch, parent, ["alpha", "beta"], text) == 0);
+    // The checks, before the removal, report what the removal then
+    // resolves: /beta/ is missing on disk and from the block, /alpha/ is in
+    // the block but not in .gitrepos. So this exits 1 where it exited 0
+    // (#29 step 3; step 5 leaves such findings out).
+    assert(removeNested(scratch, parent, ["alpha", "beta"], text) == 1);
     assert(text[0] == "removed /alpha/ from .gitignore\nremoved /beta/ from .gitrepos\n");
 }
 
-/// Remaining problems are reported after removing; --fix repairs them first.
+/// Problems are reported before removing (#29 step 3); --fix repairs them
+/// first.
 unittest
 {
     import std.algorithm.searching : canFind;
@@ -301,16 +328,19 @@ unittest
     assert(removeNested(scratch, parent, ["beta"], text) == 1);
     assert(text[1].canFind("outside the managed block") && text[1].canFind("(fixable with --fix)"));
 
-    assert(removeNested(scratch, parent, ["--fix", "alpha"], text) == 0);
-    assert(text[1] == "");
+    // What's left after --fix: /alpha/, the one being removed, is missing.
+    assert(removeNested(scratch, parent, ["--fix", "alpha"], text) == 1);
+    assert(text[0] == "fixed 1 problem(s)\nremoved /alpha/ from .gitrepos and .gitignore\n", text[0]);
+    assert(missingOnly(parent, text[1], "alpha"), text[1]);
     assert(buildPath(parent, ".gitrepos").readText == "");
     assert(buildPath(parent, ".gitignore").readText == ""); // the loose line moved into the block, then removed
 }
 
 /// --fix doesn't register an unlisted nested repo: only check-nested --fix
-/// does that (#15).
+/// does that (#15; #29 step 3). It is reported instead.
 unittest
 {
+    import std.algorithm.searching : canFind;
     import nestedCommon : git, makeRemote;
 
     immutable scratch = testDirectory("removeNested-fix-unlisted");
@@ -325,7 +355,9 @@ unittest
     git("-C", buildPath(parent, "gamma"), "remote", "set-head", "origin", "main");
 
     string[2] text;
-    assert(removeNested(scratch, parent, ["--fix", "alpha"], text) == 0);
+    assert(removeNested(scratch, parent, ["--fix", "alpha"], text) == 1); // see twoRepos
+    assert(text[1].canFind("/gamma/ is a git repository but is not listed"), text[1]);
+    assert(!text[0].canFind("added"), text[0]);
     assert(buildPath(parent, ".gitrepos").readText == "/beta/ b.git dev\n");
     assert(buildPath(parent, ".gitignore").readText
         == "*.o\n" ~ beginMarker ~ "\n/beta/\n" ~ endMarker ~ "\n");
@@ -373,6 +405,61 @@ unittest
     // A name that isn't registered is the removal's own failure: still 1.
     assert(removeNested(scratch, parent, ["--no-check", "delta"], text) == 1);
     assert(text[1].canFind("delta is in neither") && !text[1].canFind("/ghost/"), text[1]);
+}
+
+/// The checks run first, on the whole parent, with check-nested's options
+/// (#29 decisions 1 and 10, step 3): the report comes before the `removed`
+/// line, and the directory being removed is still listed in it; -r and -f
+/// reach it; --fix writes its repair first and registers nothing; -f
+/// without -r gets the warning; --no-check with -f is bad usage.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import nestedCommon : capturedTogether, checksFixture, comesBefore;
+
+    immutable scratch = testDirectory("removeNested-checks-first");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = checksFixture(scratch);
+    immutable gitReposPath = buildPath(parent, ".gitrepos");
+    immutable gitIgnorePath = buildPath(parent, ".gitignore");
+    immutable listing = gitReposPath.readText;
+    immutable ignoring = gitIgnorePath.readText;
+    string together(string[] arguments...)
+    {
+        return capturedTogether(scratch, (File output, File errors) {
+            run(["remove-nested", "-C", parent] ~ arguments, output, errors);
+        });
+    }
+
+    string[2] text;
+    assert(removeNested(scratch, parent, ["--no-check", "-f", "alpha"], text) == 2);
+    assert(text[0] == "" && text[1].canFind("--no-check can't be used with -f/--force"), text[1]);
+    assert(gitReposPath.readText == listing && gitIgnorePath.readText == ignoring);
+
+    // -f alone: the warning, then the removal; nothing else to report.
+    immutable noEffect = "remove-nested: warning: -f/--force has no effect without -r/--recursive\n";
+    immutable removed = "removed /alpha/ from .gitrepos and .gitignore";
+    immutable warned = together("-f", "alpha");
+    assert(comesBefore(warned, noEffect, removed), warned);
+    assert(!warned.canFind("warning: /"), warned);
+
+    // --fix -r -f: the repair is written first, both unlisted repos are
+    // reported before the removal, alpha isn't (it is still listed), and
+    // nothing is registered.
+    gitReposPath.write(listing);
+    gitIgnorePath.write("/private/\n"); // /alpha/ not in the block
+    immutable gamma = "warning: " ~ buildPath(parent, "tools", "gamma") ~ ": /tools/gamma/ is a git repository";
+    immutable secret = "/private/secret/ is a git repository";
+    immutable fixed = together("--fix", "-r", "-f", "alpha");
+    assert(comesBefore(fixed, "fixed 1 problem(s)\n", gamma), fixed);
+    assert(comesBefore(fixed, gamma, removed) && comesBefore(fixed, secret, removed), fixed);
+    assert(!fixed.canFind("/alpha/ is a git repository") && !fixed.canFind("added "), fixed);
+    assert(gitReposPath.readText == "");
+    assert(gitIgnorePath.readText == "/private/\n");
 }
 
 /// Usage: no directory, an unknown option, --help; a malformed file changes nothing.

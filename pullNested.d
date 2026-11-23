@@ -186,7 +186,7 @@ version (unittest)
     import std.file : exists, mkdirRecurse, readText, rmdirRecurse, write;
     import std.path : buildPath;
     import gitRepos : escapeField;
-    import nestedCommon : captured;
+    import nestedCommon : captured, missingOnly;
     import textFile : testDirectory;
     static import nestedCommon;
 
@@ -259,25 +259,6 @@ version (unittest)
             parentDirectory.fix();
             parentDirectory.write();
         }
-    }
-
-    /**
-     * Whether the only warnings in `errors` are the checks' "does not
-     * exist", one for each of `names` in `parent`, in order. Since #29 step
-     * 3 the checks run before the pull, so a repo that pull-nested is about
-     * to clone is first reported as missing, and the exit status is 1.
-     * Step 5 leaves those findings out (decision 5), and step 6 stops
-     * findings changing the exit status (decision 2).
-     */
-    private bool missingOnly(string parent, string errors, string[] names...)
-    {
-        import std.algorithm.iteration : filter, map;
-        import std.algorithm.searching : startsWith;
-        import std.array : array;
-        import std.string : splitLines;
-
-        return errors.splitLines.filter!(line => line.startsWith("warning: ")).array
-            == names.map!(name => "warning: " ~ buildPath(parent, name) ~ ": /" ~ name ~ "/ does not exist").array;
     }
 }
 

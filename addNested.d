@@ -7,16 +7,17 @@
 module addNested;
 
 import std.stdio : File;
+import std.typecons : No;
 
 import gitRepos : GitRepos, GitReposEntry, ValidationOutcome;
-import nestedCommon : checkDirectoryArgument, CommonOptions, DirectoryArgumentOutcome, entryFor,
-    EntryOutcome, ExitStatus, loadParent, parseOptions, printFindings;
+import nestedCommon : checkDirectoryArgument, ChecksOutcome, CommonOptions, DirectoryArgumentOutcome,
+    entryFor, EntryOutcome, ExitStatus, loadParent, parseOptions, runChecks, warnForceWithoutRecursive;
 import parentDirectory : ParentDirectory;
 
-enum usage = "Usage: add-nested [-C <directory>] [--fix | --no-check] [--branch <name>]
-                  [--url <url>] <nested directory>...
-       add-nested [-C <directory>] [--fix | --no-check] [--branch <name>]
-                  --clone <url> [<nested directory>]
+enum usage = "Usage: add-nested [-C <directory>] [-r [-f]] [--fix | --no-check]
+                  [--branch <name>] [--url <url>] <nested directory>...
+       add-nested [-C <directory>] [-r [-f]] [--fix | --no-check]
+                  [--branch <name>] --clone <url> [<nested directory>]
 
 Registers each nested directory (an existing clone, given relative to the
 parent directory) in .gitrepos and in the managed block of .gitignore.
@@ -26,8 +27,10 @@ Every argument is checked first; if any fails, nothing is written.
 With --clone, first clones <url> into the nested directory (by default
 the name git clone would choose), which must not exist yet.
 
-Afterwards, problems left in .gitignore and .gitrepos are reported, except
-with --no-check.
+Once the arguments are found to be right, and before anything is added
+or cloned, check-nested's checks run on the whole directory and report
+what they find, with -r, -f and --fix as in check-nested, except that
+--fix doesn't register unlisted repos. --no-check skips them.
 
 Exit status: 0 done, 1 an argument failed or problems remain (with
 --no-check, only a failed argument, clone or write), 2 bad usage or a
@@ -67,6 +70,7 @@ ExitStatus run(string[] args, File output, File errors)
         errors.writeln("add-nested: --branch and --url need exactly one nested directory");
         return ExitStatus.usage;
     }
+    warnForceWithoutRecursive("add-nested", commonOptions, errors);
 
     ParentDirectory parentDirectory;
     if (!loadParent("add-nested", commonOptions.directory, parentDirectory, errors))
@@ -97,9 +101,10 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.findings;
     }
 
-    if (commonOptions.fix)
+    bool findingsReported;
+    if (!checksFirst(parentDirectory, commonOptions, findingsReported, output, errors))
     {
-        parentDirectory.fix();
+        return ExitStatus.findings;
     }
     foreach (gitReposEntry; gitReposEntries)
     {
@@ -119,29 +124,43 @@ ExitStatus run(string[] args, File output, File errors)
         output.writeln("added ", gitReposEntry.directory, " ", gitReposEntry.url,
             gitReposEntry.branch.length ? " " ~ gitReposEntry.branch : "");
     }
-    if (commonOptions.noCheck)
-    {
-        return ExitStatus.ok; // #29: no check after writing; the add itself succeeded
-    }
-    return checkWritten(commonOptions.directory, output, errors);
+    return findingsReported ? ExitStatus.findings : ExitStatus.ok;
 }
 
 /**
- * The checks after writing, on the files as written, not the objects in
- * memory: add() appends, and only write() sorts, so the objects would look
- * unsorted. Returns: the exit status.
- * `parentDirectory` is a path, not a ParentDirectory, on purpose.
+ * The checks, before anything is added or cloned (#29 decisions 1 and 10,
+ * step 3): runChecks() on the whole parent, with --fix writing its repairs
+ * first, but registering no unlisted repo. Skipped with --no-check. The
+ * caller has already checked her arguments, which writes nothing, so a
+ * mistake there still leaves the files as they were.
+ *
+ * `parentDirectory` is then the fixed state that was written, and the
+ * caller adds to it and writes again, so the files end up as --fix and
+ * the add together make them.
+ *
+ * Returns: false if --fix couldn't write (the message has been printed),
+ * and the caller stops with ExitStatus.findings, having added nothing.
+ * Otherwise true, with `findingsReported` set if the checks printed any.
  */
-ExitStatus checkWritten(string parentDirectory, File output, File errors)
+bool checksFirst(ParentDirectory parentDirectory, const CommonOptions commonOptions,
+    out bool findingsReported, File output, File errors)
 {
-    output.flush(); // before the warnings that follow on the error stream
-    ParentDirectory written;
-    if (!loadParent("add-nested", parentDirectory, written, errors))
+    if (commonOptions.noCheck)
     {
-        return ExitStatus.findings;
+        return true;
     }
-    immutable remaining = printFindings(written.check, errors);
-    return remaining ? ExitStatus.findings : ExitStatus.ok;
+    const checksResult = runChecks(parentDirectory, commonOptions, No.register, output, errors);
+    with (ChecksOutcome) final switch (checksResult.outcome)
+    {
+    case clean:
+        return true;
+    case findingsRemain:
+        findingsReported = true;
+        return true;
+    case writeFailed:
+        errors.writeln("add-nested: ", checksResult.message);
+        return false;
+    }
 }
 
 /**
@@ -170,6 +189,7 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
         errors.writeln("add-nested: --clone takes at most one nested directory");
         return ExitStatus.usage;
     }
+    warnForceWithoutRecursive("add-nested", commonOptions, errors);
 
     ParentDirectory parentDirectory;
     if (!loadParent("add-nested", commonOptions.directory, parentDirectory, errors))
@@ -231,6 +251,12 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
         return ExitStatus.findings;
     }
 
+    bool findingsReported;
+    if (!checksFirst(parentDirectory, commonOptions, findingsReported, output, errors))
+    {
+        return ExitStatus.findings; // nothing was cloned
+    }
+
     const cloneResult = cloneNested(onDisk, directory, url, branch, output, errors);
     final switch (cloneResult.outcome)
     {
@@ -261,10 +287,6 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
         return ExitStatus.findings;
     }
     const gitReposEntry = entryResult.gitReposEntry;
-    if (commonOptions.fix)
-    {
-        parentDirectory.fix();
-    }
     parentDirectory.add(gitReposEntry);
     try
     {
@@ -278,11 +300,7 @@ ExitStatus cloneAndAdd(CommonOptions commonOptions, string url, string branch, s
     }
     output.writeln("added ", gitReposEntry.directory, " ", gitReposEntry.url,
         gitReposEntry.branch.length ? " " ~ gitReposEntry.branch : "");
-    if (commonOptions.noCheck)
-    {
-        return ExitStatus.ok; // #29: no check after writing; the clone and add succeeded
-    }
-    return checkWritten(commonOptions.directory, output, errors);
+    return findingsReported ? ExitStatus.findings : ExitStatus.ok;
 }
 
 version (unittest)
@@ -329,6 +347,38 @@ version (unittest)
         }
         return [read(".gitrepos"), read(".gitignore")];
     }
+
+    /**
+     * Whether the only warnings in `errors` are the checks' "is a git
+     * repository but is not listed", one for each of `names` in `parent`,
+     * in order. Since #29 step 3 the checks run before the add, so a clone
+     * that add-nested is about to register is first reported as unlisted,
+     * and the exit status is 1. Step 5 leaves those findings out (decision
+     * 5), and step 6 stops findings changing the exit status (decision 2).
+     */
+    private bool unlistedOnly(string parent, string errors, string[] names...)
+    {
+        import std.algorithm.iteration : filter;
+        import std.algorithm.searching : startsWith;
+        import std.array : array;
+        import std.range : zip;
+        import std.string : splitLines;
+
+        const warnings = errors.splitLines.filter!(line => line.startsWith("warning: ")).array;
+        if (warnings.length != names.length)
+        {
+            return false;
+        }
+        foreach (warning, name; zip(warnings, names))
+        {
+            if (!warning.startsWith("warning: " ~ buildPath(parent, name) ~ ": /" ~ name
+                ~ "/ is a git repository but is not listed in "))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 }
 
 /// A clone on its remote's default branch: registered, branch left out.
@@ -346,8 +396,8 @@ unittest
     git("clone", "-q", remote, buildPath(parent, "alpha"));
 
     string[2] text;
-    assert(addNested(scratch, parent, ["alpha"], text) == 0, text[1]);
-    assert(text[0] == "added /alpha/ " ~ remote ~ "\n" && text[1] == "");
+    assert(addNested(scratch, parent, ["alpha"], text) == 1, text[1]); // see unlistedOnly
+    assert(text[0] == "added /alpha/ " ~ remote ~ "\n" && unlistedOnly(parent, text[1], "alpha"), text[1]);
     assert(files(parent) == ["/alpha/ " ~ remote ~ "\n",
         beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n"]);
 }
@@ -369,7 +419,8 @@ unittest
     git("-C", alpha, "checkout", "-q", "dev");
 
     string[2] text;
-    assert(addNested(scratch, parent, ["/alpha/"], text) == 0, text[1]);
+    assert(addNested(scratch, parent, ["/alpha/"], text) == 1, text[1]); // see unlistedOnly
+    assert(unlistedOnly(parent, text[1], "alpha"), text[1]);
     assert(files(parent)[0] == "/alpha/ " ~ remote ~ " dev\n");
 
     git("-C", alpha, "checkout", "-q", "main");
@@ -393,7 +444,8 @@ unittest
 
     // On master (the default): recorded, so the line can't change meaning.
     string[2] text;
-    assert(addNested(scratch, parent, ["blog"], text) == 0, text[1]);
+    assert(addNested(scratch, parent, ["blog"], text) == 1, text[1]); // see unlistedOnly
+    assert(unlistedOnly(parent, text[1], "blog"), text[1]);
     assert(files(parent)[0] == "/blog/ " ~ remote ~ " master\n");
 
     // On the branch named after the directory: left out.
@@ -418,12 +470,14 @@ unittest
     git("-C", alpha, "remote", "add", "origin", remote);
 
     string[2] text;
-    assert(addNested(scratch, parent, ["alpha"], text) == 0, text[1]);
+    assert(addNested(scratch, parent, ["alpha"], text) == 1, text[1]); // see unlistedOnly
+    assert(unlistedOnly(parent, text[1], "alpha"), text[1]);
     assert(files(parent)[0] == "/alpha/ " ~ remote ~ " main\n");
 }
 
 /// Adding a directory that sorts before an existing one gives no false
-/// "not sorted" warning: the files are checked as written.
+/// "not sorted" warning: the files are checked before the add (#29 step
+/// 3), and write() sorts them.
 unittest
 {
     immutable scratch = testDirectory("addNested-sorts-first");
@@ -439,9 +493,10 @@ unittest
     git("clone", "-q", betaRemote, buildPath(parent, "beta"));
 
     string[2] text;
-    assert(addNested(scratch, parent, ["beta"], text) == 0, text[1]);
-    assert(addNested(scratch, parent, ["alpha"], text) == 0, text[1]);
-    assert(text[1] == "");
+    assert(addNested(scratch, parent, ["beta"], text) == 1, text[1]); // see unlistedOnly
+    assert(unlistedOnly(parent, text[1], "alpha", "beta"), text[1]);
+    assert(addNested(scratch, parent, ["alpha"], text) == 1, text[1]);
+    assert(unlistedOnly(parent, text[1], "alpha"), text[1]); // and no "not sorted"
     assert(files(parent)[0] == "/alpha/ " ~ alphaRemote ~ "\n/beta/ " ~ betaRemote ~ "\n");
 }
 
@@ -461,7 +516,9 @@ unittest
     git("clone", "-q", betaRemote, buildPath(parent, "tools", "beta"));
 
     string[2] text;
-    assert(addNested(scratch, parent, ["alpha", "tools/beta"], text) == 0, text[1]);
+    // Without -r only alpha, a direct subdirectory, is looked at.
+    assert(addNested(scratch, parent, ["alpha", "tools/beta"], text) == 1, text[1]); // see unlistedOnly
+    assert(unlistedOnly(parent, text[1], "alpha"), text[1]);
     assert(files(parent) == ["/alpha/ " ~ alphaRemote ~ "\n/tools/beta/ " ~ betaRemote ~ "\n",
         beginMarker ~ "\n/alpha/\n/tools/beta/\n" ~ endMarker ~ "\n"]);
 }
@@ -519,15 +576,17 @@ unittest
 
     string[2] text;
     assert(addNested(scratch, parent,
-        ["--url", "git@github.com:pflagerd/lonely.git", "--branch", "release", "lonely"], text) == 0,
-        text[1]);
+        ["--url", "git@github.com:pflagerd/lonely.git", "--branch", "release", "lonely"], text) == 1,
+        text[1]); // see unlistedOnly
+    assert(unlistedOnly(parent, text[1], "lonely"), text[1]);
     assert(files(parent)[0] == "/lonely/ git@github.com:pflagerd/lonely.git release\n");
 
     assert(addNested(scratch, parent, ["--branch", "x", "lonely", "other"], text) == 2);
     assert(text[1].canFind("need exactly one nested directory"));
 }
 
-/// --fix repairs the files too; remaining problems are reported (exit 1).
+/// --fix repairs the files too, before the add; remaining problems are
+/// reported (exit 1).
 unittest
 {
     import std.algorithm.searching : canFind;
@@ -549,7 +608,13 @@ unittest
     assert(addNested(scratch, parent, ["alpha"], text) == 1);
     assert(text[1].canFind("outside the managed block"));
 
-    assert(addNested(scratch, parent, ["--fix", "alpha"], text) == 0, text[1]);
+    // The run above added alpha. Since #29 step 3 the checks before the add
+    // also look at the disk, and report that /gamma/ is missing, so this
+    // exits 1 where it exited 0.
+    assert(addNested(scratch, parent, ["--fix", "alpha"], text) == 1, text[1]);
+    assert(text[0] == "fixed 1 problem(s)\nadded /alpha/ " ~ alphaRemote ~ "\n", text[0]);
+    assert(text[1].canFind("/gamma/ does not exist"), text[1]);
+    assert(!text[1].canFind("outside the managed block"), text[1]); // fixed first
     assert(files(parent)[1] == beginMarker ~ "\n/alpha/\n/gamma/\n" ~ endMarker ~ "\n");
 }
 
@@ -604,7 +669,7 @@ unittest
 }
 
 /// --fix doesn't register an unlisted nested repo it wasn't given: only
-/// check-nested --fix does that (#15).
+/// check-nested --fix does that (#15; #29 step 3). It is reported instead.
 unittest
 {
     immutable scratch = testDirectory("addNested-fix-unlisted");
@@ -621,7 +686,8 @@ unittest
     git("-C", buildPath(parent, "beta"), "remote", "set-head", "origin", "main");
 
     string[2] text;
-    assert(addNested(scratch, parent, ["--fix", "alpha"], text) == 0, text[1]);
+    assert(addNested(scratch, parent, ["--fix", "alpha"], text) == 1, text[1]); // see unlistedOnly
+    assert(unlistedOnly(parent, text[1], "alpha", "beta"), text[1]);
     assert(files(parent) == ["/alpha/ " ~ remote ~ "\n", beginMarker ~ "\n/alpha/\n" ~ endMarker ~ "\n"]);
 }
 
@@ -646,6 +712,100 @@ unittest
     buildPath(scratch, ".gitrepos").write("/alpha/\n");
     assert(addNested(scratch, scratch, ["alpha"], text) == 2);
     assert(buildPath(scratch, ".gitrepos").readText == "/alpha/\n");
+}
+
+/// The checks run first, on the whole parent, with check-nested's options
+/// (#29 decisions 1 and 10, step 3), for --clone and for an existing clone:
+/// the report comes before the clone and the `added` line; -r and -f reach
+/// it; --fix writes its repair first and registers nothing it wasn't given;
+/// -f without -r gets the warning; --no-check with -r is bad usage.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import nestedCommon : capturedTogether, checksFixture, comesBefore;
+
+    immutable scratch = testDirectory("addNested-checks-first");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = checksFixture(scratch);
+    immutable alphaRemote = buildPath(scratch, "alpha.git");
+    immutable gammaRemote = buildPath(scratch, "gamma.git");
+    immutable deltaRemote = makeRemote(scratch, "delta", "main");
+    string together(string[] arguments...)
+    {
+        return capturedTogether(scratch, (File output, File errors) {
+            run(["add-nested", "-C", parent] ~ arguments, output, errors);
+        });
+    }
+
+    string[2] text;
+    immutable before = files(parent);
+    assert(addNested(scratch, parent, ["--no-check", "-r", "tools/gamma"], text) == 2);
+    assert(text[0] == "" && text[1].canFind("--no-check can't be used with -r/--recursive"), text[1]);
+    assert(files(parent) == before);
+
+    // --clone delta: the report about gamma, elsewhere in the parent, comes
+    // first; --fix's repair is written before it, and gamma isn't registered.
+    buildPath(parent, ".gitignore").write("/private/\n"); // /alpha/ no longer in the block
+    immutable gamma = "warning: " ~ buildPath(parent, "tools", "gamma") ~ ": /tools/gamma/ is a git repository";
+    immutable cloned = together("--fix", "-r", "--clone", deltaRemote);
+    assert(comesBefore(cloned, "fixed 1 problem(s)\n", gamma), cloned);
+    assert(comesBefore(cloned, gamma, "Cloning into"), cloned);
+    assert(comesBefore(cloned, gamma, "added /delta/ " ~ deltaRemote ~ "\n"), cloned);
+    assert(files(parent) == ["/alpha/ " ~ alphaRemote ~ "\n/delta/ " ~ deltaRemote ~ "\n",
+        "/private/\n" ~ beginMarker ~ "\n/alpha/\n/delta/\n" ~ endMarker ~ "\n"]);
+
+    // An existing clone, with -r -f: both unlisted repos are reported first
+    // (gamma, the one being added, too: step 5 leaves that out), then gamma
+    // is added.
+    immutable secret = "/private/secret/ is a git repository";
+    immutable added = together("-r", "-f", "tools/gamma");
+    assert(comesBefore(added, gamma, "added /tools/gamma/ " ~ gammaRemote ~ "\n"), added);
+    assert(comesBefore(added, secret, "added /tools/gamma/"), added);
+    assert(files(parent)[0].canFind("/tools/gamma/ " ~ gammaRemote ~ "\n"));
+    assert(!files(parent)[0].canFind("secret"));
+
+    // Without -r, nothing is left to report: exit 0. -f alone is warned about.
+    assert(addNested(scratch, parent, ["-f", "tools/gamma"], text) == 0, text[1]);
+    assert(text[1] == "add-nested: warning: -f/--force has no effect without -r/--recursive\n", text[1]);
+}
+
+/// --fix that can't write stops add-nested before anything is cloned or
+/// added: the checks come first (#29 step 3).
+unittest
+{
+    import std.algorithm.searching : canFind, startsWith;
+    import std.conv : octal;
+    import std.file : getAttributes, setAttributes;
+
+    immutable scratch = testDirectory("addNested-checks-write-failed");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable remote = makeRemote(scratch, "alpha", "main");
+    immutable parent = buildPath(scratch, "parent");
+    parent.mkdirRecurse;
+    immutable reposText = "/gone/ g.git\n"; // --fix would add /gone/ to .gitignore's block
+    buildPath(parent, ".gitrepos").write(reposText);
+    immutable attributes = parent.getAttributes;
+    parent.setAttributes(octal!555); // no new files in parent, so writeAtomically fails
+    scope (exit)
+    {
+        parent.setAttributes(attributes); // runs before the rmdirRecurse above
+    }
+
+    string[2] text;
+    assert(addNested(scratch, parent, ["--fix", "--clone", remote], text) == 1);
+    assert(text[0] == "", text[0]);
+    assert(text[1].startsWith("add-nested: could not write the fixed files: "), text[1]);
+    assert(!text[1].canFind("Cloning"), text[1]);
+    assert(!buildPath(parent, "alpha").exists);
+    assert(files(parent) == [reposText, ""]);
 }
 
 // --- tests: --clone ----------------------------------------------------------------
