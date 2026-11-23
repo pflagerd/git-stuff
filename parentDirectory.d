@@ -453,24 +453,10 @@ class ParentDirectory
             {
                 continue;
             }
-            // Only directories, following symbolic links. isDir follows them
-            // (stat(2)) and throws for a dangling one, which is skipped too.
-            // checkRepository can't be left to do this: exists() doesn't
-            // follow links (lstat(2)), so it would call isDir and throw.
+            // Only directories, following symbolic links: checkRepository
+            // says notDirectory for a file and danglingLink for a link to
+            // nothing (#25), and both are skipped below.
             immutable onDisk = buildPath(directory, name);
-            bool isDirectory;
-            try
-            {
-                isDirectory = onDisk.isDir;
-            }
-            catch (FileException)
-            {
-                isDirectory = false;
-            }
-            if (!isDirectory)
-            {
-                continue;
-            }
             const repositoryResult = checkRepository(nestedDirectory, onDisk);
             with (RepositoryOutcome) final switch (repositoryResult.outcome)
             {
