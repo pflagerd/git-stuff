@@ -314,7 +314,9 @@ local repositories in a temp directory (no network or SSH key needed).
 - The directory exists (#6). Directories in the `.gitignore` block are
   covered too (#7): each must be in `.gitrepos` (`check()`), and every
   `.gitrepos` directory is checked here.
-- It is a directory.
+- It is a directory. A symbolic link to one counts. A link that can't be
+  followed (its target doesn't exist, or a loop) is reported as one, with
+  the target it holds, rather than as "not a directory" (#25).
 - The directory is a nested repo: `git -C <directory> rev-parse --show-toplevel`
   **succeeds** and prints the directory's **own** absolute path, compared
   after resolving symlinks on both sides

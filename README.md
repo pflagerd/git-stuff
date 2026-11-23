@@ -224,7 +224,8 @@ own messages shown as they happen:
 - **Missing:** `git clone <url> <directory>`, then the branch as described
   for `.gitrepos`; when the directory-name rule finds no such branch, it says
   it's staying on the default.
-- **Exists but isn't a nested repo:** a warning; skipped.
+- **Exists but isn't a nested repo:** a warning; skipped. A symbolic link
+  to nothing counts as existing, so it is skipped too, not cloned.
 - **Exists:** `git pull --ff-only`, which only ever moves the branch forward;
   if the branch has diverged it refuses and leaves the repo as it was,
   whatever your `pull.*` settings say. **It never switches branches** in an
@@ -266,8 +267,8 @@ Design: `docs/push-nested-proposal.md`.
 ### `check-nested [-r [-f]]`
 
 Reports problems with `.gitignore` and `.gitrepos`, with the nested
-repos they list on disk (missing, not a repository, no remote with the
-listed url), and with git repositories that `.gitrepos` doesn't list
+repos they list on disk (missing, not a repository, a symbolic link to
+nothing, no remote with the listed url), and with git repositories that `.gitrepos` doesn't list
 (below). It never uses the network, and prints nothing when there's
 nothing to report. With `--fix` it repairs what it can, writes both files,
 and prints `fixed N problem(s)`. `--no-check` is bad usage here (exit
@@ -407,9 +408,6 @@ description holds the steps as a checklist.
 - [#29](https://github.com/pflagerd/git-stuff/issues/29) Run
   `check-nested`'s checks, and accept its options, in every nested
   command.
-- [#25](https://github.com/pflagerd/git-stuff/issues/25) Bug:
-  `checkRepository()` crashes on a `.gitrepos` entry that is a dangling
-  symbolic link.
 - [#22](https://github.com/pflagerd/git-stuff/issues/22) Let `check-nested
   --fix` apply some fixes, not all.
 - [#23](https://github.com/pflagerd/git-stuff/issues/23) Number the findings

@@ -138,7 +138,7 @@ bool pushNestedRepo(string parentDirectory, const GitReposEntry gitReposEntry,
     {
     case repository:
         break;
-    case missing, notDirectory, notGitRepository, insideRepository:
+    case missing, notDirectory, danglingLink, notGitRepository, insideRepository:
         problem(repositoryResult.message ~ "; skipped");
         return false;
     }
@@ -182,7 +182,7 @@ bool pushParentDirectory(string parentDirectory, const PushOptions pushOptions, 
     {
     case repository:
         break;
-    case missing, notDirectory, notGitRepository, insideRepository:
+    case missing, notDirectory, danglingLink, notGitRepository, insideRepository:
         output.flush();
         errors.writeln("push-nested: ", repositoryResult.message, "; --parent skipped");
         return false;
@@ -590,6 +590,36 @@ unittest
     buildPath(pushSetUp.alpha).mkdirRecurse;
     assert(pushNested(scratch, pushSetUp.parent, [], text) == 1);
     assert(text[1].canFind("is not a git repository") && text[1].canFind("skipped"));
+}
+
+/// An entry that is a symbolic link to nothing (#25) is skipped with a
+/// warning, like a file, and nothing is pushed.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.file : rename, symlink;
+
+    immutable scratch = testDirectory("pushNested-dangling-link");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    const pushSetUp = setUp(scratch);
+    commit(pushSetUp.alpha); // something to push, were it reachable
+    immutable moved = buildPath(scratch, "alpha-moved");
+    rename(pushSetUp.alpha, moved);
+    immutable nowhere = buildPath(pushSetUp.parent, "nowhere");
+    symlink(nowhere, pushSetUp.alpha);
+    immutable before = tip(pushSetUp.origin, "main");
+
+    string[2] text;
+    assert(pushNested(scratch, pushSetUp.parent, [], text) == 1);
+    assert(text[1].canFind("push-nested: /alpha/: /alpha/ is a symbolic link to " ~ nowhere
+        ~ ", which does not exist; skipped\n"), text[1]);
+    assert(!text[1].canFind("Exception"), text[1]);
+    assert(tip(pushSetUp.origin, "main") == before && tip(pushSetUp.mirror, "main") == before);
+    assert(tip(moved, "main") != before); // the commit that wasn't pushed
 }
 
 /// --parent pushes the parent too, after the nested repos; a parent that isn't

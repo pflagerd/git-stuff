@@ -244,6 +244,42 @@ unittest
     assert(text[1].canFind("/gone/ does not exist") && !text[1].canFind("(fixable with --fix)"));
 }
 
+/// #25's reproduction: an entry that is a symbolic link to nothing is a
+/// finding that --fix can't repair, not a crash. Exit 1, and the link is
+/// left alone.
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.file : isSymlink, readLink, symlink;
+
+    immutable scratch = testDirectory("checkNested-dangling-link");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = buildPath(scratch, "parent");
+    parent.mkdirRecurse;
+    immutable alpha = buildPath(parent, "alpha");
+    immutable nowhere = buildPath(parent, "nowhere");
+    symlink(nowhere, alpha);
+    buildPath(parent, ".gitrepos").write("/alpha/ git@example.com:a.git\n");
+    immutable danglingLine = "warning: " ~ alpha ~ ": /alpha/ is a symbolic link to " ~ nowhere
+        ~ ", which does not exist\n"; // a whole line, so no "(fixable with --fix)"
+
+    string[2] text;
+    assert(checkNested(scratch, parent, [], text) == 1);
+    assert(text[0] == "");
+    assert(text[1].canFind(danglingLine), text[1]);
+    assert(!text[1].canFind("Exception"), text[1]);
+
+    // --fix adds /alpha/ to the block, but the link stays, and so does the finding.
+    assert(checkNested(scratch, parent, ["--fix"], text) == 1);
+    assert(text[0] == "fixed 1 problem(s)\n", text[0]);
+    assert(text[1] == danglingLine, text[1]);
+    assert(alpha.isSymlink && alpha.readLink == nowhere && !nowhere.exists);
+}
+
 /// --fix that can't write: exit 1, one line naming check-nested, nothing
 /// on the output, the files unchanged.
 unittest
