@@ -137,8 +137,15 @@ Teaching them what you're doing comes first. Speed comes second.
     confirms it is contained in `master`. Also remove the step's local
     worktree and branches with the safe forms: `git worktree remove`
     without `--force`, and `git branch -d`. (Decided 2026-11-22.)
-- Everything else (docs, process, small fixes outside a step) is committed
-  directly to `master`. Don't create other branches unless the owner asks.
+- A code change outside a step (a bug fix such as #25, or any change to
+  `*.d`, the `Makefile` or `bin/`) gets its own branch and draft PR, the
+  same way as a step: branch from `master`, named like
+  `issue-25-dangling-symlink`; progress as PR comments; ready only when
+  complete; the owner merges; the same cleanup after the merge. Its PR
+  says "Closes #<issue>" when it fixes the whole issue. (Decided
+  2026-11-23.)
+- Everything else (docs and process) is committed directly to `master`.
+  Don't create other branches unless the owner asks.
   (A cloud session may be started with a branch name of its own; work as
   above anyway.)
 - Before finishing, make sure work is committed and pushed, and say which
