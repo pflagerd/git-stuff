@@ -19,8 +19,8 @@ module checkNested;
 
 import std.stdio : File;
 
-import nestedCommon : CommonOptions, ExitStatus, loadParent, parseOptions, printFindings,
-    reportNoCheckConflict;
+import nestedCommon : ChecksOutcome, CommonOptions, ExitStatus, loadParent, parseOptions,
+    reportNoCheckConflict, runChecks;
 import parentDirectory : ParentDirectory;
 
 enum usage = "Usage: check-nested [-C <directory>] [-r [-f]] [--fix]
@@ -49,17 +49,13 @@ usage or a file that can't be read.
  */
 ExitStatus run(string[] args, File output, File errors)
 {
-    import std.algorithm.iteration : filter;
-    import std.algorithm.searching : count;
-
-    import std.typecons : No, Yes;
-
     CommonOptions commonOptions;
-    bool recursive;
-    bool force;
+    // -r and -f are fields of CommonOptions, since runChecks() reads them,
+    // but for now only check-nested accepts them, so it passes them here
+    // as its own options (#29, step 2).
     const parsed = parseOptions(args, commonOptions, output, errors, usage,
-        "recursive|r", "Look below the direct subdirectories too.", &recursive,
-        "force|f", "With -r, also look inside the directories that .gitignore names.", &force);
+        "recursive|r", "Look below the direct subdirectories too.", &commonOptions.recursive,
+        "force|f", "With -r, also look inside the directories that .gitignore names.", &commonOptions.force);
     if (!parsed.proceed)
     {
         return parsed.exitStatus;
@@ -70,11 +66,11 @@ ExitStatus run(string[] args, File output, File errors)
     if (commonOptions.noCheck)
     {
         string[] ownCheckOptions;
-        if (recursive)
+        if (commonOptions.recursive)
         {
             ownCheckOptions ~= "-r/--recursive";
         }
-        if (force)
+        if (commonOptions.force)
         {
             ownCheckOptions ~= "-f/--force";
         }
@@ -90,7 +86,7 @@ ExitStatus run(string[] args, File output, File errors)
     // The proposal's answer 1b: -f without -r has no effect, because the
     // default mode doesn't walk. It is not refused, but she is told, in
     // case she meant -r -f. The exit status doesn't change.
-    if (force && !recursive)
+    if (commonOptions.force && !commonOptions.recursive)
     {
         errors.writeln("check-nested: warning: -f/--force has no effect without -r/--recursive");
     }
@@ -101,40 +97,17 @@ ExitStatus run(string[] args, File output, File errors)
         return ExitStatus.usage;
     }
 
-    if (commonOptions.fix)
+    const checksResult = runChecks(parentDirectory, commonOptions, output, errors);
+    with (ChecksOutcome) final switch (checksResult.outcome)
     {
-        immutable fixable = parentDirectory.check.filter!(finding => finding.fixable).count;
-        // Registered first, so fix() then sorts them into both files.
-        const gitReposEntries = parentDirectory.registerUnlisted(recursive ? Yes.recursive : No.recursive,
-            force ? Yes.force : No.force);
-        parentDirectory.fix();
-        try
-        {
-            parentDirectory.write();
-        }
-        catch (Exception exception)
-        {
-            errors.writeln("check-nested: could not write the fixed files: ", exception.msg);
-            return ExitStatus.findings;
-        }
-        foreach (gitReposEntry; gitReposEntries)
-        {
-            output.writeln("added ", gitReposEntry.directory, " ", gitReposEntry.url,
-                gitReposEntry.branch.length ? " " ~ gitReposEntry.branch : "");
-        }
-        if (fixable + gitReposEntries.length)
-        {
-            output.writeln("fixed ", fixable + gitReposEntries.length, " problem(s)");
-            // Output is buffered when it isn't a terminal; flush so this line
-            // comes before the warnings that follow on the error stream.
-            output.flush();
-        }
+    case clean:
+        return ExitStatus.ok;
+    case findingsRemain:
+        return ExitStatus.findings;
+    case writeFailed:
+        errors.writeln("check-nested: ", checksResult.message);
+        return ExitStatus.findings;
     }
-
-    immutable remaining = printFindings(parentDirectory.check
-        ~ parentDirectory.checkDisk(recursive ? Yes.recursive : No.recursive, force ? Yes.force : No.force),
-        errors);
-    return remaining ? ExitStatus.findings : ExitStatus.ok;
 }
 
 version (unittest)
@@ -269,6 +242,40 @@ unittest
     assert(checkNested(scratch, parent, ["--fix"], text) == 1);
     assert(text[0] == "fixed 1 problem(s)\n"); // /gone/ added to the block
     assert(text[1].canFind("/gone/ does not exist") && !text[1].canFind("(fixable with --fix)"));
+}
+
+/// --fix that can't write: exit 1, one line naming check-nested, nothing
+/// on the output, the files unchanged.
+unittest
+{
+    import std.algorithm.searching : count, endsWith, startsWith;
+    import std.conv : octal;
+    import std.file : getAttributes, setAttributes;
+
+    immutable scratch = testDirectory("checkNested-fix-write-failed");
+    scope (exit)
+    {
+        scratch.rmdirRecurse;
+    }
+
+    immutable parent = buildPath(scratch, "parent");
+    parent.mkdirRecurse;
+    immutable reposText = "/gone/ g.git\n";
+    buildPath(parent, ".gitrepos").write(reposText);
+    immutable attributes = parent.getAttributes;
+    parent.setAttributes(octal!555); // no new files in parent
+    scope (exit)
+    {
+        parent.setAttributes(attributes); // runs before the rmdirRecurse above
+    }
+
+    string[2] text;
+    assert(checkNested(scratch, parent, ["--fix"], text) == 1);
+    assert(text[0] == "");
+    assert(text[1].startsWith("check-nested: could not write the fixed files: ")
+        && text[1].count('\n') == 1 && text[1].endsWith("\n"), text[1]); // one line, no warnings
+    assert(buildPath(parent, ".gitrepos").readText == reposText);
+    assert(!buildPath(parent, ".gitignore").exists);
 }
 
 /// Unlisted nested repos: reported, fixable only when add-nested could

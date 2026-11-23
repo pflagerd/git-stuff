@@ -355,8 +355,9 @@ class ParentDirectory
      * would record it. The others are left for checkDisk() to report.
      *
      * Unlike fix(), this reads the disk (local git state only, never the
-     * network), so only check-nested --fix calls it; the other commands'
-     * --fix stay in memory. Nothing is written until write().
+     * network), so only nestedCommon.runChecks() calls it, which so far
+     * only check-nested runs (#29, step 2); the other commands' --fix stay
+     * in memory. Nothing is written until write().
      *
      * Returns: the entries registered, in name order.
      */
